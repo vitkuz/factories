@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "framework-metadata.schema.json",
+  "title": "Framework metadata",
+  "description": "The YAML frontmatter of one knowledge/frameworks/<id>.md file. scripts/frameworks/build-index.py enforces the required fields and copies exactly these fields into framework-index.yaml; the Markdown body below the frontmatter is never indexed and is opened only by steps the router selected it for.",
+  "type": "object",
+  "required": ["id", "name", "purpose", "problemTypes", "useWhen", "doNotUseWhen", "questionsAnswered", "requiredEvidence", "outputs", "complexity"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Kebab-case; must equal the file name without .md."
+    },
+    "name": { "type": "string", "description": "Human name, e.g. Porter's Five Forces." },
+    "purpose": { "type": "string", "description": "One sentence: what analytical question the framework answers." },
+    "problemTypes": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+      "description": "Analytical problem types this framework serves. Their union across the registry is the classifier's vocabulary and the router's retrieval key. Reuse an existing type before coining a new one."
+    },
+    "useWhen": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Situations where it adds value." },
+    "doNotUseWhen": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Hard exclusions: a sub-problem matching one of these rejects the framework before scoring." },
+    "questionsAnswered": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "The questions a completed analysis answers; used to score questionCoverage." },
+    "requiredEvidence": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Kinds of evidence the analysis needs; the research plan turns these into data requirements." },
+    "outputs": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "What the analysis produces." },
+    "complexity": { "type": "integer", "minimum": 1, "maximum": 5, "description": "Effort and evidence burden: 1 = a 2x2 you can fill from a few facts, 5 = a multi-part model needing many data points. Drives the unnecessaryComplexity penalty." },
+    "overlapsWith": { "type": "array", "items": { "type": "string" }, "description": "Framework ids that answer largely the same questions; drives the frameworkOverlap penalty." },
+    "pairsWellWith": { "type": "array", "items": { "type": "string" }, "description": "Framework ids that complement it on the same branch." }
+  }
+}

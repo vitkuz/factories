@@ -1,0 +1,433 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "repurpose-factory",
+  "name": "Repurpose Factory",
+  "author": "vitkuz",
+  "description": "Turns one source (a YouTube video, an article URL or a local file) into a LinkedIn post, an X thread, a blog post, a newsletter issue and a Shorts script: extracts the core once, lets a person check it, writes every platform in parallel, reviews them all against the core, and packages the approved pieces with a posting calendar.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "knowledgePath": "{{factoryPath}}/knowledge"
+  },
+  "params": {
+    "source": "",
+    "audience": "professionals interested in the topic",
+    "voice": "",
+    "language": "English"
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "ingest"
+  ],
+  "steps": {
+    "ingest": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a careful clerk. You copy what the source says; you never summarise, fix or add to it."
+      ],
+      "prompt": [
+        "Turn the source into clean text: {{source}}.",
+        "It may be a YouTube URL (get the captions with yt-dlp), an article URL or a local file path.",
+        "Return DONE when the text is written, or FAILED with the reason when the source cannot be read (no captions, paywall, missing file)."
+      ],
+      "input": [],
+      "output": [
+        "1-ingest/source.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/ingest.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "extract-core"
+          ]
+        },
+        "FAILED": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    },
+    "extract-core": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an editor who finds the one idea a piece is really about. You use only what the source says."
+      ],
+      "prompt": [
+        "Extract the core of the source for an audience of {{audience}}, in {{language}}.",
+        "If {{outputDir}}/3-check-core/decision.md exists, the person sent the core back: its note is your brief, address every point.",
+        "The core may be revised once.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-ingest/source.md"
+      ],
+      "output": [
+        "2-extract-core/core.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/core-extraction.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "check-core"
+          ]
+        }
+      }
+    },
+    "check-core": {
+      "agent": "human",
+      "prompt": [
+        "Read 2-extract-core/core.md: the thesis, key points, quotes, numbers and hooks every platform piece will be written from.",
+        "Answer APPROVE to write all five pieces, or REVISE with a note on what to change (at most once)."
+      ],
+      "input": [
+        "2-extract-core/core.md"
+      ],
+      "output": [
+        "3-check-core/decision.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "write-linkedin",
+            "write-x-thread",
+            "write-blog",
+            "write-newsletter",
+            "write-shorts-script"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "extract-core"
+          ],
+          "max": 1,
+          "onMax": [
+            "write-linkedin",
+            "write-x-thread",
+            "write-blog",
+            "write-newsletter",
+            "write-shorts-script"
+          ]
+        }
+      }
+    },
+    "write-linkedin": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a LinkedIn ghostwriter.",
+        "You write one strong post, not a summary, and you never invent a fact the core does not hold."
+      ],
+      "prompt": [
+        "Write the LinkedIn post for {{audience}}, in {{language}}, from the core only.",
+        "If the voice guide '{{voice}}' is a path, read it and follow it.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-core/core.md",
+        "3-check-core/decision.md"
+      ],
+      "output": [
+        "4-write-linkedin/linkedin.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/linkedin.md",
+        "{{factoryPath}}/knowledge/humanizer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "consistency-review"
+          ]
+        }
+      }
+    },
+    "write-x-thread": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are an X thread writer. Every post must earn the next one, and you never invent a fact the core does not hold."
+      ],
+      "prompt": [
+        "Write the X thread for {{audience}}, in {{language}}, from the core only.",
+        "If the voice guide '{{voice}}' is a path, read it and follow it.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-core/core.md",
+        "3-check-core/decision.md"
+      ],
+      "output": [
+        "5-write-x-thread/x-thread.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/x-thread.md",
+        "{{factoryPath}}/knowledge/humanizer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "consistency-review"
+          ]
+        }
+      }
+    },
+    "write-blog": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a blog writer.",
+        "You turn the core into a post a reader can act on, and you never invent a fact the core does not hold."
+      ],
+      "prompt": [
+        "Write the blog post for {{audience}}, in {{language}}, from the core only, linking the source {{source}} when it is a URL.",
+        "If the voice guide '{{voice}}' is a path, read it and follow it.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-core/core.md",
+        "3-check-core/decision.md"
+      ],
+      "output": [
+        "6-write-blog/blog.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/blog.md",
+        "{{factoryPath}}/knowledge/humanizer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "consistency-review"
+          ]
+        }
+      }
+    },
+    "write-newsletter": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a newsletter editor writing to people who chose to hear from you.",
+        "You never invent a fact the core does not hold."
+      ],
+      "prompt": [
+        "Write the newsletter issue for {{audience}}, in {{language}}, from the core only, linking the source {{source}} when it is a URL.",
+        "If the voice guide '{{voice}}' is a path, read it and follow it.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-core/core.md",
+        "3-check-core/decision.md"
+      ],
+      "output": [
+        "7-write-newsletter/newsletter.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/newsletter.md",
+        "{{factoryPath}}/knowledge/humanizer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "consistency-review"
+          ]
+        }
+      }
+    },
+    "write-shorts-script": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a short-form video scriptwriter.",
+        "You write for the ear and the first two seconds, and you never invent a fact the core does not hold."
+      ],
+      "prompt": [
+        "Write the 60-second vertical video script for {{audience}}, in {{language}}, from the core only.",
+        "If the voice guide '{{voice}}' is a path, read it and follow it.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-core/core.md",
+        "3-check-core/decision.md"
+      ],
+      "output": [
+        "8-write-shorts-script/shorts.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/shorts-script.md",
+        "{{factoryPath}}/knowledge/humanizer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "consistency-review"
+          ]
+        }
+      }
+    },
+    "consistency-review": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a strict editor. You check claims against the core and the source, and you never rewrite a piece yourself."
+      ],
+      "prompt": [
+        "Review all five platform pieces against the core and the source.",
+        "Return CLEAN if nothing must change, or FIX with a numbered list of exact fixes per file.",
+        "Pieces may be sent to be fixed at most twice; on a later pass, check only that the earlier fixes landed and nothing new broke."
+      ],
+      "input": [
+        "1-ingest/source.md",
+        "2-extract-core/core.md",
+        "4-write-linkedin/linkedin.md",
+        "5-write-x-thread/x-thread.md",
+        "6-write-blog/blog.md",
+        "7-write-newsletter/newsletter.md",
+        "8-write-shorts-script/shorts.md",
+        "10-fix/*.md"
+      ],
+      "output": [
+        "9-consistency-review/review.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/consistency-review.md"
+      ],
+      "transitions": {
+        "CLEAN": {
+          "target": [
+            "approve"
+          ]
+        },
+        "FIX": {
+          "target": [
+            "fix"
+          ],
+          "max": 2,
+          "onMax": [
+            "approve"
+          ]
+        }
+      }
+    },
+    "fix": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a copy editor. You change exactly what you were asked to change and leave everything else word for word."
+      ],
+      "prompt": [
+        "Apply the fixes to the platform files in place.",
+        "If {{outputDir}}/11-approve/decision.md exists and is newer than the review, the person sent the pieces back: their note is your brief and outranks the review.",
+        "Write in the fix file every change you made, per file.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-core/core.md",
+        "9-consistency-review/review.md",
+        "11-approve/*.md",
+        "4-write-linkedin/linkedin.md",
+        "5-write-x-thread/x-thread.md",
+        "6-write-blog/blog.md",
+        "7-write-newsletter/newsletter.md",
+        "8-write-shorts-script/shorts.md"
+      ],
+      "output": [
+        "10-fix/fix.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/humanizer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "consistency-review"
+          ]
+        }
+      }
+    },
+    "approve": {
+      "agent": "human",
+      "prompt": [
+        "Read the five pieces (4-write-linkedin/linkedin.md, 5-write-x-thread/x-thread.md, 6-write-blog/blog.md, 7-write-newsletter/newsletter.md, 8-write-shorts-script/shorts.md) and the review 9-consistency-review/review.md.",
+        "Answer APPROVE to package them (name any platform to drop), REVISE with a note on what to change (at most twice), or ABORT to stop the run."
+      ],
+      "input": [
+        "4-write-linkedin/linkedin.md",
+        "5-write-x-thread/x-thread.md",
+        "6-write-blog/blog.md",
+        "7-write-newsletter/newsletter.md",
+        "8-write-shorts-script/shorts.md",
+        "9-consistency-review/review.md"
+      ],
+      "output": [
+        "11-approve/decision.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "package"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "fix"
+          ],
+          "max": 2
+        },
+        "ABORT": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    },
+    "package": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "Assemble the publishing package from the approved pieces only, dropping every platform the person dropped in the decision file, and write the posting calendar.",
+        "Copy each piece unchanged.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-core/core.md",
+        "4-write-linkedin/linkedin.md",
+        "5-write-x-thread/x-thread.md",
+        "6-write-blog/blog.md",
+        "7-write-newsletter/newsletter.md",
+        "8-write-shorts-script/shorts.md",
+        "11-approve/decision.md"
+      ],
+      "output": [
+        "12-package/package.md",
+        "12-package/calendar.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/package.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

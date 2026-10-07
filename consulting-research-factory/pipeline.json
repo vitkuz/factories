@@ -1,0 +1,590 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "consulting-research-factory",
+  "name": "Consulting Research Factory",
+  "author": "vitkuz",
+  "description": "Turns a topic into an executive consulting report: problem frame, issue tree, an approved research plan, parallel research, evidence base, insights, storyline, exhibits and a partner review.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "format": "markdown",
+    "knowledgePath": "{{factoryPath}}/knowledge"
+  },
+  "params": {
+    "topic": "",
+    "audience": "a CEO and the executive team",
+    "geography": "global",
+    "timeframe": "today to 2030",
+    "language": "English"
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "frame-problem"
+  ],
+  "steps": {
+    "frame-problem": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an engagement manager at a top strategy consultancy opening a new study.",
+        "You turn a vague topic into a decision, a SMART governing question and a day-one answer.",
+        "You do not search the web and you do not research the answer at this step."
+      ],
+      "prompt": [
+        "Frame the study on {{topic}} for {{audience}}.",
+        "Geography: {{geography}}.",
+        "Time frame: {{timeframe}}.",
+        "Write the problem statement in {{language}} and {{format}}.",
+        "If a decision file from the human checkpoint is provided, this is a reframing pass: apply every note in it and say at the top which notes you applied.",
+        "Return DONE when the problem statement file is written."
+      ],
+      "input": [],
+      "output": [
+        "1-frame-problem/problem-statement.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/problem-statement.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-issue-tree"
+          ]
+        }
+      }
+    },
+    "build-issue-tree": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a consulting manager who disaggregates problems.",
+        "You build MECE issue trees, turn their branches into testable hypotheses and prune what does not matter.",
+        "You never answer a hypothesis yourself."
+      ],
+      "prompt": [
+        "Build the issue tree and the hypotheses for the study on {{topic}}, from the problem statement.",
+        "Write it in {{language}} and {{format}}.",
+        "If a decision file from the human checkpoint is provided, apply its notes on the tree and the hypotheses.",
+        "Return DONE when the issue tree file is written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md"
+      ],
+      "output": [
+        "2-build-issue-tree/issue-tree.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/issue-tree.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-research"
+          ]
+        }
+      }
+    },
+    "plan-research": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a consulting manager writing the workplan and the ghost deck.",
+        "Every analysis you plan tests a named hypothesis, and every planned exhibit has a message title before any data exists.",
+        "You plan; you do not research."
+      ],
+      "prompt": [
+        "Write the research plan and the ghost deck for the study on {{topic}}, from the problem statement and the issue tree.",
+        "Split the workplan across the three research lenses (numbers, players, counter-evidence) so three analysts can work in parallel without overlap.",
+        "Write in {{language}} and {{format}}.",
+        "Return DONE when both files are written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "2-build-issue-tree/issue-tree.md"
+      ],
+      "output": [
+        "3-plan-research/research-plan.md",
+        "3-plan-research/ghost-deck.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/research-plan.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "approve-plan"
+          ]
+        }
+      }
+    },
+    "approve-plan": {
+      "agent": "human",
+      "prompt": [
+        "Read the problem statement, the issue tree and the research plan (the ghost deck shows the story the study expects to tell).",
+        "This is the last free moment: web research starts next.",
+        "Answer APPROVE to start research, or REVISE with notes on what to change (the question, the scope, a branch, a hypothesis).",
+        "You may REVISE at most twice."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "2-build-issue-tree/issue-tree.md",
+        "3-plan-research/research-plan.md",
+        "3-plan-research/ghost-deck.md"
+      ],
+      "output": [
+        "4-approve-plan/decision.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "research-numbers",
+            "research-players",
+            "research-counterevidence"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "frame-problem"
+          ],
+          "max": 2,
+          "onMax": [
+            "research-numbers",
+            "research-players",
+            "research-counterevidence"
+          ]
+        }
+      },
+      "knowledge": [
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ]
+    },
+    "research-numbers": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a research analyst who builds the quantitative fact base: market sizes, growth rates, prices, costs, financials and official statistics.",
+        "You never guess a number.",
+        "Every record carries its source URL, its date, its unit and its scope, and you size markets two ways before you trust a figure."
+      ],
+      "prompt": [
+        "Research the study on {{topic}} ({{geography}}, {{timeframe}}) through the numbers lens: run the workplan rows the research plan assigns to numbers.",
+        "Write evidence records and a short notes file in {{language}}.",
+        "If a partner review file is provided, this is a gap-filling pass:",
+        "add evidence only for the gaps the review assigns to numbers, append the new records with the next free ids and leave the existing records untouched;",
+        "if no gap is yours, write one line in the notes file saying so.",
+        "Return DONE when both files are written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "2-build-issue-tree/issue-tree.md",
+        "3-plan-research/research-plan.md"
+      ],
+      "output": [
+        "5-research-numbers/evidence.jsonl",
+        "5-research-numbers/notes.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/evidence-gathering.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "research-players": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a research analyst who maps the landscape: companies, competitors, customers, regulators, case examples and what named leaders and experts actually said.",
+        "You prefer filings and first-hand statements to commentary.",
+        "Every record carries its source URL and date."
+      ],
+      "prompt": [
+        "Research the study on {{topic}} ({{geography}}, {{timeframe}}) through the players lens: run the workplan rows the research plan assigns to players.",
+        "Write evidence records and a short notes file in {{language}}.",
+        "If a partner review file is provided, this is a gap-filling pass:",
+        "add evidence only for the gaps the review assigns to players, append the new records with the next free ids and leave the existing records untouched;",
+        "if no gap is yours, write one line in the notes file saying so.",
+        "Return DONE when both files are written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "2-build-issue-tree/issue-tree.md",
+        "3-plan-research/research-plan.md"
+      ],
+      "output": [
+        "6-research-players/evidence.jsonl",
+        "6-research-players/notes.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/evidence-gathering.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "research-counterevidence": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the red-team analyst.",
+        "Your job is to kill the hypotheses: you search for disconfirming data, failed cases, bear cases, alternative explanations and sources that contradict the consensus.",
+        "You record what you find with the same rigour as supporting evidence, and you say plainly when a hypothesis survived your attack."
+      ],
+      "prompt": [
+        "Research the study on {{topic}} ({{geography}}, {{timeframe}}) through the counter-evidence lens:",
+        "for every prioritized hypothesis in the issue tree, run the kill tests the research plan assigns to counter-evidence.",
+        "Write evidence records and a short notes file in {{language}}.",
+        "If a partner review file is provided, this is a gap-filling pass:",
+        "add evidence only for the gaps the review assigns to counter-evidence, append the new records with the next free ids and leave the existing records untouched;",
+        "if no gap is yours, write one line in the notes file saying so.",
+        "Return DONE when both files are written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "2-build-issue-tree/issue-tree.md",
+        "3-plan-research/research-plan.md"
+      ],
+      "output": [
+        "7-research-counterevidence/evidence.jsonl",
+        "7-research-counterevidence/notes.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/evidence-gathering.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "build-evidence-base": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the fact-base owner.",
+        "You merge the analysts' evidence into one register, remove duplicates, grade every record, reconcile conflicting numbers and score each hypothesis against the evidence.",
+        "You add no new facts and you do not search the web."
+      ],
+      "prompt": [
+        "Build the evidence base for the study on {{topic}} from the three analysts' evidence files and notes.",
+        "Write the merged evidence register, the number register and the hypothesis scorecard in {{language}}.",
+        "Return DONE when all three files are written."
+      ],
+      "input": [
+        "2-build-issue-tree/issue-tree.md",
+        "5-research-numbers/evidence.jsonl",
+        "5-research-numbers/notes.md",
+        "6-research-players/evidence.jsonl",
+        "6-research-players/notes.md",
+        "7-research-counterevidence/evidence.jsonl",
+        "7-research-counterevidence/notes.md"
+      ],
+      "output": [
+        "8-build-evidence-base/evidence.jsonl",
+        "8-build-evidence-base/number-register.md",
+        "8-build-evidence-base/hypothesis-scorecard.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/evidence-base.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "synthesize-insights"
+          ]
+        }
+      }
+    },
+    "synthesize-insights": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the engagement manager synthesizing.",
+        "You do not summarize; you derive.",
+        "You climb from data to finding to insight to implication to recommendation, you answer the governing question in one sentence, and every step of the climb cites evidence ids.",
+        "You never add a fact the evidence base does not hold."
+      ],
+      "prompt": [
+        "Synthesize the study on {{topic}} for {{audience}}: answer the governing question from the problem statement using only the evidence base, the number register and the hypothesis scorecard.",
+        "Write the synthesis in {{language}} and {{format}}.",
+        "Return DONE when the synthesis file is written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "2-build-issue-tree/issue-tree.md",
+        "8-build-evidence-base/evidence.jsonl",
+        "8-build-evidence-base/number-register.md",
+        "8-build-evidence-base/hypothesis-scorecard.md"
+      ],
+      "output": [
+        "9-synthesize-insights/synthesis.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/synthesis.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-storyline"
+          ]
+        }
+      }
+    },
+    "build-storyline": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a consulting partner shaping the storyline before anything is written.",
+        "You build a Minto pyramid: SCQA introduction, one governing thought, three to five key messages, supporting points and the exhibit that proves each.",
+        "Titles alone must tell the story."
+      ],
+      "prompt": [
+        "Build the storyline for the report on {{topic}} for {{audience}}, from the synthesis and the ghost deck.",
+        "Write it in {{language}} and {{format}}.",
+        "If a partner review file is provided, this is a restructuring pass: fix exactly the structural problems it lists and say at the top which points you addressed.",
+        "Return DONE when the storyline file is written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "3-plan-research/ghost-deck.md",
+        "8-build-evidence-base/number-register.md",
+        "9-synthesize-insights/synthesis.md"
+      ],
+      "output": [
+        "10-build-storyline/storyline.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/storyline.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "design-exhibits"
+          ]
+        }
+      }
+    },
+    "design-exhibits": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a visual-communications specialist trained on Say It With Charts.",
+        "For every exhibit you write the message first, name the comparison it makes, then choose the chart.",
+        "Every number you plot comes from the number register or the evidence base, with its source line."
+      ],
+      "prompt": [
+        "Design the exhibits the storyline calls for in the report on {{topic}}.",
+        "For each one write the data table and a chart spec, using only figures from the number register and the evidence base.",
+        "Write in {{language}}.",
+        "Return DONE when the exhibits file is written."
+      ],
+      "input": [
+        "8-build-evidence-base/evidence.jsonl",
+        "8-build-evidence-base/number-register.md",
+        "10-build-storyline/storyline.md"
+      ],
+      "output": [
+        "11-design-exhibits/exhibits.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/exhibits.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "write-report"
+          ]
+        }
+      }
+    },
+    "write-report": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the consultant who writes the report.",
+        "You follow the storyline exactly, lead every section with its answer, put the exhibits where the storyline says, and add no claim the synthesis and the evidence base do not carry.",
+        "You write plainly, with numbers instead of adjectives."
+      ],
+      "prompt": [
+        "Write the report on {{topic}} for {{audience}} in {{language}} and {{format}}, from the storyline, the exhibits, the synthesis and the evidence base.",
+        "If a partner review file is provided, this is a revision pass:",
+        "fix exactly what the review assigns to the writer, leave everything else untouched, and list at the very top, under a heading 'Review points addressed', which points you fixed.",
+        "Return DONE when the report file is written."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "8-build-evidence-base/evidence.jsonl",
+        "8-build-evidence-base/number-register.md",
+        "8-build-evidence-base/hypothesis-scorecard.md",
+        "9-synthesize-insights/synthesis.md",
+        "10-build-storyline/storyline.md",
+        "11-design-exhibits/exhibits.md"
+      ],
+      "output": [
+        "12-write-report/report.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/report.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "partner-review"
+          ]
+        }
+      }
+    },
+    "partner-review": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the skeptical senior partner.",
+        "Your job is not to improve the prose; it is to try to destroy the argument before the client does.",
+        "You trace numbers back to evidence, hunt unsupported claims, weak sources, causation read into correlation, cherry-picking, hidden assumptions and recommendations that do not follow.",
+        "You never rewrite the report yourself and you never send work back for style alone."
+      ],
+      "prompt": [
+        "Review the report on {{topic}} for {{audience}} against the problem statement, the storyline, the synthesis and the evidence base.",
+        "Write the review file with the verdict on its first line.",
+        "Return exactly one of: APPROVE if the report is ready for {{audience}};",
+        "REVISE if the writing must change and the storyline and evidence already on file are enough (the writer may be sent back at most 2 times, after which the report is finalized as it is);",
+        "RESTRUCTURE if the storyline itself is wrong — the governing thought does not answer the question, the pyramid does not hold,",
+        "or the titles do not tell the story (at most once; once it has been used, send any remaining structural problems to the writer with REVISE);",
+        "RESEARCH_MORE if a fact the answer depends on is missing from the evidence base entirely —",
+        "name each gap, the hypothesis it concerns and the lens it belongs to (numbers, players or counter-evidence) (at most once; once it has been used, send any remaining gaps to the writer with REVISE, to be stated as known gaps)."
+      ],
+      "input": [
+        "1-frame-problem/problem-statement.md",
+        "8-build-evidence-base/evidence.jsonl",
+        "8-build-evidence-base/number-register.md",
+        "8-build-evidence-base/hypothesis-scorecard.md",
+        "9-synthesize-insights/synthesis.md",
+        "10-build-storyline/storyline.md",
+        "11-design-exhibits/exhibits.md",
+        "12-write-report/report.md"
+      ],
+      "output": [
+        "13-partner-review/review.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/method.md",
+        "{{knowledgePath}}/partner-review.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "finalize"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "write-report"
+          ],
+          "max": 2,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "RESTRUCTURE": {
+          "target": [
+            "build-storyline"
+          ],
+          "max": 1,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "RESEARCH_MORE": {
+          "target": [
+            "research-numbers",
+            "research-players",
+            "research-counterevidence"
+          ],
+          "max": 1,
+          "onMax": [
+            "finalize"
+          ]
+        }
+      }
+    },
+    "finalize": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are the clerk assembling the deliverable.",
+        "You copy, you render, you index.",
+        "You change no wording and no number in the report."
+      ],
+      "prompt": [
+        "Assemble the final package for the study on {{topic}}.",
+        "Copy the report into the output folder as report.md, render it to report.html with `python3 {{factoryPath}}/render/render_report.py <report.md> <report.html>`, copy the evidence register as evidence.jsonl, and write README.md in {{language}}.",
+        "Return DONE when the package is complete."
+      ],
+      "input": [
+        "8-build-evidence-base/evidence.jsonl",
+        "12-write-report/report.md",
+        "13-partner-review/review.md"
+      ],
+      "output": [
+        "14-finalize/report.md",
+        "14-finalize/report.html",
+        "14-finalize/evidence.jsonl",
+        "14-finalize/README.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/finalize.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

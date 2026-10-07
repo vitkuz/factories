@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factories/state.schema.json",
+  "title": "AIPipelineRunState",
+  "description": "JSON Schema for pipeline runtime state persistence (state.json). It lives at the kit root (factories/ in a project) beside pipeline.schema.json; the recorder (tools/run-state, bundled as bin/state.mjs) writes state.json, its src/features/state/state.schema.ts is the Zod twin, and tests/state-schema-sync.test.ts fails when the two drift. A new state.json points here with $schema \"factories/state.schema.json\" (relative to the project root).",
+  "type": "object",
+  "required": [
+    "runId",
+    "pipelineName",
+    "status",
+    "createdAt",
+    "updatedAt",
+    "currentWave",
+    "context",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string",
+      "description": "Unique identifier for this pipeline execution run."
+    },
+    "pipelineName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Kebab-case name of the executing pipeline."
+    },
+    "pipelineFile": {
+      "type": "string",
+      "description": "Absolute path of the pipeline.json this run was initialized from, so tools can render the run's real step graph."
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "sessionSource": {
+      "type": "string"
+    },
+    "transcriptPath": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["IDLE", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "ABORTED"],
+      "description": "Overall state machine status of the pipeline."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "currentWave": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Wave mode: the wave now executing. A graph run leaves this at 0 and uses 'frontier' instead."
+    },
+    "activeSteps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of currently running step identifiers in parallel wave."
+    },
+    "context": {
+      "type": "object",
+      "required": ["constants", "params", "captured"],
+      "additionalProperties": false,
+      "properties": {
+        "constants": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "captured": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      }
+    },
+    "pause": {
+      "type": "object",
+      "required": ["step", "status", "ask"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["AWAITING_INPUT", "RESUMED", "REJECTED"]
+        },
+        "ask": {
+          "type": "string"
+        },
+        "capture": {
+          "type": "string"
+        },
+        "present": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "responseSchema": {
+          "type": "object"
+        },
+        "pausedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "steps": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/stepRecord"
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/historyEvent"
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["graph"],
+      "description": "Present on a run of a graph pipeline -- one that declares START and per-step 'transitions' edges. Such a run advances by event rather than by wave, and 'frontier' replaces 'currentWave' as the answer to what runs now."
+    },
+    "frontier": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Graph mode: the steps the graph has routed to that have not finished."
+    },
+    "edges": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": "Graph mode: how many times each 'step:event' edge has been traversed. This is what enforces an edge's 'max' across a whole run, including across a resume."
+    },
+    "vars": {
+      "type": "object",
+      "additionalProperties": {},
+      "description": "Graph mode: values steps reported alongside their event. They outrank params and constants when an edge condition is evaluated."
+    }
+  },
+  "$defs": {
+    "stepRecord": {
+      "type": "object",
+      "required": ["order", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "integer",
+          "description": "Wave mode: the step's wave. A graph step leaves this at 0."
+        },
+        "agent": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["agent", "pipeline"]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "transcriptPath": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "RUNNING", "COMPLETED", "FAILED", "SKIPPED", "RETRYING"]
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "retryCount": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "error": {
+          "type": "string"
+        },
+        "skipReason": {
+          "type": "string",
+          "description": "Why a SKIPPED step was never run: a reason a caller gave, or the routing decision that put the step permanently out of reach."
+        },
+        "childPipeline": {
+          "type": "object",
+          "required": ["path"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "outputDir": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": ["IDLE", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "ABORTED"]
+            },
+            "stateFile": {
+              "type": "string"
+            },
+            "startedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "completedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "steps": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/stepRecord"
+              }
+            },
+            "config": {
+              "type": "object",
+              "description": "Declaration of the child pipeline loaded from its pipeline.json."
+            }
+          }
+        },
+        "passes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Graph mode: how many times the step has been entered. A loop that routes back into a step runs it again, and each pass overwrites event, outputs and reported."
+        },
+        "event": {
+          "type": "string",
+          "description": "Graph mode: the event this step returned on its most recent pass."
+        },
+        "reported": {
+          "type": "object",
+          "additionalProperties": {},
+          "description": "Graph mode: values the step reported alongside its event."
+        },
+        "note": {
+          "type": "string",
+          "description": "Graph mode: free note recorded with the pass. On a human step this is what the person added, and it is the brief for the next pass when the answer routes back."
+        }
+      }
+    },
+    "historyEvent": {
+      "type": "object",
+      "required": ["timestamp", "type", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "PIPELINE_INIT",
+            "WAVE_START",
+            "STEP_START",
+            "STEP_COMPLETE",
+            "STEP_FAIL",
+            "STEP_RETRY",
+            "STEP_SKIP",
+            "PIPELINE_PAUSE",
+            "PIPELINE_RESUME",
+            "PIPELINE_COMPLETE",
+            "PIPELINE_FAIL",
+            "CHILD_PIPELINE_START",
+            "CHILD_PIPELINE_COMPLETE",
+            "CHILD_PIPELINE_FAIL",
+            "STEP_EVENT",
+            "EDGE_CAPPED",
+            "HUMAN_ANSWER"
+          ]
+        },
+        "step": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

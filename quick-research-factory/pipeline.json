@@ -1,0 +1,261 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "quick-research-factory",
+  "name": "Quick Research Factory",
+  "author": "vitkuz",
+  "description": "Answers one research question fast: frames it, researches the web, writes a short report, reviews it (with a bounded revise loop) and finalizes it.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "format": "markdown"
+  },
+  "params": {
+    "topic": "",
+    "sub_questions": 5,
+    "language": "English",
+    "audience": "an executive"
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}",
+      "test -f {{outputDir}}/6-improve-pipeline/improvement-memo.md && mkdir -p {{rootPath}}/improvements/{{id}} && cp {{outputDir}}/6-improve-pipeline/improvement-memo.md {{rootPath}}/improvements/{{id}}/{{slug}}-{{date}}.md || echo \"no improvement memo to collect\""
+    ]
+  },
+  "START": [
+    "frame-question"
+  ],
+  "steps": {
+    "frame-question": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an engagement manager framing a research problem.",
+        "You turn a vague topic into one governing question, a hypothesis and a MECE issue tree.",
+        "You never search the web at this step and you never answer the question yourself."
+      ],
+      "prompt": [
+        "Frame the research on {{topic}} for {{audience}}, in {{language}}.",
+        "Write the governing question, the initial hypothesis and an issue tree of exactly {{sub_questions}} sub-questions, each with its own hypothesis, the evidence that would prove or disprove it, and 3 to 5 web search queries.",
+        "Write it in {{format}}.",
+        "Return DONE when the issue tree file is written."
+      ],
+      "input": [],
+      "output": [
+        "1-frame-question/issue-tree.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/mckinsey-method.md",
+        "{{factoryPath}}/knowledge/issue-tree.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "research-web"
+          ]
+        }
+      }
+    },
+    "research-web": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a research analyst who never guesses.",
+        "Every claim you record carries the URL it came from and the date you read it.",
+        "You prefer primary sources and you record disagreement between sources instead of hiding it."
+      ],
+      "prompt": [
+        "Research {{topic}} by following the issue tree.",
+        "For every sub-question run its web search queries, read the best sources, and write one findings file named `<nn>-<sub-question-slug>.findings.md` in the output folder, where <nn> is the sub-question number.",
+        "Write in {{language}} and {{format}}.",
+        "If a review file is provided, this is a second pass: fill exactly the evidence gaps the review lists, update only the findings files they concern, and leave the rest untouched.",
+        "Return DONE when every sub-question has a findings file."
+      ],
+      "input": [
+        "1-frame-question/issue-tree.md"
+      ],
+      "output": [
+        "2-research-web/*.findings.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/mckinsey-method.md",
+        "{{factoryPath}}/knowledge/web-search.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "write-report"
+          ]
+        }
+      }
+    },
+    "write-report": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a consultant writing for a reader with five minutes.",
+        "You lead with the answer, you support it with evidence from the findings files only, and you never add a claim the findings do not carry."
+      ],
+      "prompt": [
+        "Write the research reports on {{topic}} for {{audience}}, in {{language}} and {{format}}.",
+        "Write one report per sub-question, named `<nn>-<sub-question-slug>.report.md`, and one `00-executive-summary.report.md` that answers the governing question and states whether the hypothesis held.",
+        "Use only the issue tree and the findings files as sources.",
+        "If a review file is provided, this is a revision pass:",
+        "fix exactly what the review lists, leave everything else untouched, and say at the top of the executive summary which review points you addressed.",
+        "Return DONE when all report files are written."
+      ],
+      "input": [
+        "1-frame-question/issue-tree.md",
+        "2-research-web/*.findings.md"
+      ],
+      "output": [
+        "3-write-report/*.report.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/mckinsey-method.md",
+        "{{factoryPath}}/knowledge/report.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "review"
+          ]
+        }
+      }
+    },
+    "review": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a strict partner reviewing before the client sees the work.",
+        "You check that the answer is supported, the structure is MECE and every number has a source.",
+        "You never rewrite the reports yourself and you never send work back for style alone."
+      ],
+      "prompt": [
+        "Review the reports on {{topic}} against the issue tree and the findings files.",
+        "Write the review file with the verdict on its first line.",
+        "Return APPROVE if the reports are ready for {{audience}}.",
+        "Return REVISE if the writing must change and the evidence already on file is enough;",
+        "the writer may be sent back at most 3 times, and after that the reports are finalized as they are.",
+        "Return RESEARCH_MORE only if a finding the reports need is missing from the findings files entirely;",
+        "the researcher may be sent back at most once, and after that any remaining gap is sent to the writer to be stated as a known gap."
+      ],
+      "input": [
+        "1-frame-question/issue-tree.md",
+        "2-research-web/*.findings.md",
+        "3-write-report/*.report.md"
+      ],
+      "output": [
+        "4-review/review.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/mckinsey-method.md",
+        "{{factoryPath}}/knowledge/review-checklist.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "finalize"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "write-report"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "RESEARCH_MORE": {
+          "target": [
+            "research-web"
+          ],
+          "max": 1,
+          "onMax": [
+            "write-report"
+          ]
+        }
+      }
+    },
+    "finalize": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a clerk assembling the deliverable. You copy, you index, you change nothing in the reports."
+      ],
+      "prompt": [
+        "Assemble the final research package on {{topic}}.",
+        "Copy every report file verbatim into the output folder under its own name, and write a `README.md` that lists them in reading order, states the verdict from the last review, and names any review point left open.",
+        "Write it in {{language}} and {{format}}.",
+        "Return DONE when the package is complete."
+      ],
+      "input": [
+        "3-write-report/*.report.md",
+        "4-review/review.md"
+      ],
+      "output": [
+        "5-finalize/*.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/finalize.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "improve-pipeline"
+          ]
+        }
+      }
+    },
+    "improve-pipeline": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a pipeline retrospective analyst.",
+        "You read what a finished run left behind and propose edits to the pipeline's prompts, knowledge files and graph so the next run is better.",
+        "You never edit the pipeline yourself, you never re-judge the research, and every suggestion you make points at the artifact that motivated it."
+      ],
+      "prompt": [
+        "The research run on {{topic}} has finished.",
+        "Read every artifact it left in {{outputDir}}, the review file above all, together with the pipeline definition snapshot at {{outputDir}}/pipeline.json and every knowledge file that snapshot names (under {{factoryPath}}/knowledge/).",
+        "Memos from earlier runs of this pipeline, if any, are collected under {{rootPath}}/improvements/{{id}}/; read them too and mark every symptom that recurs.",
+        "Write the improvement memo for the pipeline:",
+        "what the review sent back or left open and why, which prompt, knowledge file or graph edge would have prevented it, what to change and what to add, each as a bounded edit a person can apply by hand.",
+        "Write in {{language}} and {{format}}.",
+        "Return DONE when the memo is written."
+      ],
+      "input": [
+        "1-frame-question/issue-tree.md",
+        "2-research-web/*.findings.md",
+        "3-write-report/*.report.md",
+        "4-review/review.md",
+        "5-finalize/*.md"
+      ],
+      "output": [
+        "6-improve-pipeline/improvement-memo.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/improvement-memo.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

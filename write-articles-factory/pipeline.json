@@ -1,0 +1,421 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "write-articles-factory",
+  "name": "Write Articles Factory",
+  "author": "vitkuz",
+  "description": "Researches a topic in depth, finds insights, picks the best angles and writes three articles in parallel, then fact-checks, edits, humanizes and packages them.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "language": "English",
+    "angles": 10,
+    "articles": 3
+  },
+  "params": {
+    "topic": "",
+    "audience": "curious professionals who are not specialists in the topic",
+    "words": 1500
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "frame-research"
+  ],
+  "steps": {
+    "frame-research": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a research lead.",
+        "You turn a vague topic into questions sharp enough to be answered with sources, and you say what is out of scope."
+      ],
+      "prompt": [
+        "Frame the research for articles on {{topic}} for {{audience}}, in {{language}}.",
+        "Write a brief with: the scope and what is out of scope, 5-8 research questions, the kinds of sources that would count as evidence for each (studies, data sets, primary documents, practitioners), and 2-3 search queries per question.",
+        "Return DONE."
+      ],
+      "input": [],
+      "output": [
+        "1-frame-research/brief.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "deep-research"
+          ]
+        }
+      }
+    },
+    "deep-research": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a research analyst.",
+        "Every claim you record carries a source URL, and you prefer primary sources and recent data over commentary."
+      ],
+      "prompt": [
+        "Answer every question in the brief about {{topic}} using web search and by reading the sources.",
+        "Record findings per question with the source URL, publication date and a short verbatim excerpt for each claim.",
+        "Note where sources disagree and where evidence is thin.",
+        "Also write a numbered source list.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-research/brief.md"
+      ],
+      "output": [
+        "2-deep-research/research.md",
+        "2-deep-research/sources.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "find-insights"
+          ]
+        }
+      }
+    },
+    "find-insights": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an analyst who looks for what the obvious coverage of a topic misses:",
+        "contradictions between sources, counter-intuitive data, second-order effects, and things practitioners know that headlines do not.",
+        "You only claim what the research supports."
+      ],
+      "prompt": [
+        "From the research on {{topic}}, extract 8-12 non-obvious insights for {{audience}}.",
+        "For each: the insight in one sentence, why it is not obvious, the evidence behind it with source numbers, and how confident the evidence lets you be.",
+        "Discard anything a first-page search result would already say.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-research/brief.md",
+        "2-deep-research/research.md",
+        "2-deep-research/sources.md"
+      ],
+      "output": [
+        "3-find-insights/insights.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "generate-angles"
+          ]
+        }
+      }
+    },
+    "generate-angles": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a features editor pitching stories. An angle is a specific argument with a hook, not a subject area."
+      ],
+      "prompt": [
+        "Generate {{angles}} distinct article angles on {{topic}} for {{audience}}, each built on one or more of the insights.",
+        "For each angle: a working headline, the one-sentence argument, the hook, the insights and sources it rests on, and why this audience would click.",
+        "No two angles may make the same argument.",
+        "If this is a second pass, the previous selection file in {{outputDir}} explains why the first set fell short — produce a fresh set that fixes that.",
+        "Return DONE."
+      ],
+      "input": [
+        "3-find-insights/insights.md",
+        "2-deep-research/sources.md"
+      ],
+      "output": [
+        "4-generate-angles/angles.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "select-angles"
+          ]
+        }
+      }
+    },
+    "select-angles": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an editor-in-chief.",
+        "You pick angles that are surprising, well-evidenced and different from each other, and you explain every cut."
+      ],
+      "prompt": [
+        "Score every angle on {{topic}} for novelty, strength of evidence, audience pull for {{audience}}, and distinctness from the others.",
+        "Select exactly {{articles}} angles, numbered 1 to {{articles}}, and for each write the brief a writer needs:",
+        "headline, argument, hook, the insights and source numbers to use, and what it must not overlap with.",
+        "Return SELECT when you have {{articles}} strong angles.",
+        "Return REGENERATE only if fewer than {{articles}} angles are strong enough to publish, and say what the set lacked; you may REGENERATE at most once."
+      ],
+      "input": [
+        "4-generate-angles/angles.md",
+        "3-find-insights/insights.md"
+      ],
+      "output": [
+        "5-select-angles/selection.md"
+      ],
+      "transitions": {
+        "SELECT": {
+          "target": [
+            "write-article-1",
+            "write-article-2",
+            "write-article-3"
+          ]
+        },
+        "REGENERATE": {
+          "target": [
+            "generate-angles"
+          ],
+          "max": 1,
+          "onMax": [
+            "write-article-1",
+            "write-article-2",
+            "write-article-3"
+          ]
+        }
+      }
+    },
+    "write-article-1": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a feature writer.",
+        "You write specific, evidenced prose for a smart non-specialist, and you never state a fact you cannot source."
+      ],
+      "prompt": [
+        "Write the article for angle 1 of the selection on {{topic}}, for {{audience}}, in {{language}}, about {{words}} words.",
+        "Use only angle 1.",
+        "If {{outputDir}}/9-fact-check/report.md exists, this is a revision pass: fix exactly what it lists for article-1 and change nothing else.",
+        "Return DONE."
+      ],
+      "input": [
+        "5-select-angles/selection.md",
+        "2-deep-research/research.md",
+        "2-deep-research/sources.md",
+        "3-find-insights/insights.md"
+      ],
+      "output": [
+        "6-write-article-1/article-1.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/article-writing.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "fact-check"
+          ]
+        }
+      }
+    },
+    "write-article-2": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a feature writer.",
+        "You write specific, evidenced prose for a smart non-specialist, and you never state a fact you cannot source."
+      ],
+      "prompt": [
+        "Write the article for angle 2 of the selection on {{topic}}, for {{audience}}, in {{language}}, about {{words}} words.",
+        "Use only angle 2.",
+        "If {{outputDir}}/9-fact-check/report.md exists, this is a revision pass: fix exactly what it lists for article-2 and change nothing else.",
+        "Return DONE."
+      ],
+      "input": [
+        "5-select-angles/selection.md",
+        "2-deep-research/research.md",
+        "2-deep-research/sources.md",
+        "3-find-insights/insights.md"
+      ],
+      "output": [
+        "7-write-article-2/article-2.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/article-writing.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "fact-check"
+          ]
+        }
+      }
+    },
+    "write-article-3": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a feature writer.",
+        "You write specific, evidenced prose for a smart non-specialist, and you never state a fact you cannot source."
+      ],
+      "prompt": [
+        "Write the article for angle 3 of the selection on {{topic}}, for {{audience}}, in {{language}}, about {{words}} words.",
+        "Use only angle 3.",
+        "If {{outputDir}}/9-fact-check/report.md exists, this is a revision pass: fix exactly what it lists for article-3 and change nothing else.",
+        "Return DONE."
+      ],
+      "input": [
+        "5-select-angles/selection.md",
+        "2-deep-research/research.md",
+        "2-deep-research/sources.md",
+        "3-find-insights/insights.md"
+      ],
+      "output": [
+        "8-write-article-3/article-3.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/article-writing.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "fact-check"
+          ]
+        }
+      }
+    },
+    "fact-check": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a fact-checker.",
+        "You verify claims against their sources, you are specific about what is wrong, and you never rewrite the articles yourself."
+      ],
+      "prompt": [
+        "Fact-check all {{articles}} articles on {{topic}}.",
+        "Overwrite the report on each pass.",
+        "Return PASS if no article has a WRONG or UNSUPPORTED claim.",
+        "Return FIX if any does; the writers will get one revision pass, so you may return FIX at most once — after that, remaining issues go to the editor through the report."
+      ],
+      "input": [
+        "*-write-article-*/article-*.md",
+        "2-deep-research/research.md",
+        "2-deep-research/sources.md"
+      ],
+      "output": [
+        "9-fact-check/report.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/fact-check.md"
+      ],
+      "transitions": {
+        "PASS": {
+          "target": [
+            "edit"
+          ]
+        },
+        "FIX": {
+          "target": [
+            "write-article-1",
+            "write-article-2",
+            "write-article-3"
+          ],
+          "max": 1,
+          "onMax": [
+            "edit"
+          ]
+        }
+      }
+    },
+    "edit": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a line and structure editor. You tighten, reorder and clarify; you never add a claim that is not sourced."
+      ],
+      "prompt": [
+        "Edit the {{articles}} articles on {{topic}} for {{audience}}: structure, clarity, flow, headline and opening strength, length near {{words}} words.",
+        "Resolve every issue still open in the fact-check report by correcting, softening or cutting the claim, and list anything you could not resolve at the end of the article under `## Open issues`.",
+        "Keep every `[n]` source marker.",
+        "Write one file per article, named after it.",
+        "Return DONE."
+      ],
+      "input": [
+        "*-write-article-*/article-*.md",
+        "9-fact-check/report.md"
+      ],
+      "output": [
+        "10-edit/article-*.edited.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/article-writing.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "humanize"
+          ]
+        }
+      }
+    },
+    "humanize": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a prose stylist who removes the tells of machine-written text. You change voice and rhythm, never facts."
+      ],
+      "prompt": [
+        "Humanize each edited article on {{topic}} in {{language}}.",
+        "Keep every fact, figure, quote, `[n]` marker and the `## Open issues` section unchanged.",
+        "Write one file per article, named after it.",
+        "Return DONE."
+      ],
+      "input": [
+        "10-edit/article-*.edited.md"
+      ],
+      "output": [
+        "11-humanize/article-*.final.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/humanizer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "package"
+          ]
+        }
+      }
+    },
+    "package": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a publishing producer. You package finished articles for release and never change their bodies."
+      ],
+      "prompt": [
+        "Build the publishing package for the {{articles}} articles on {{topic}} for {{audience}}: one publish-ready file per article under 12-package/articles/, and the index file 12-package/package.md.",
+        "Carry any `## Open issues` into the index and remove that section from the publish-ready article.",
+        "Return DONE."
+      ],
+      "input": [
+        "11-humanize/article-*.final.md",
+        "2-deep-research/sources.md",
+        "9-fact-check/report.md"
+      ],
+      "output": [
+        "12-package/package.md",
+        "12-package/articles/*.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/publishing-package.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

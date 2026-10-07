@@ -1,0 +1,38 @@
+{
+  "name": "factory-run-state",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Records one factory run in <runDir>/state.json: one pure function per command, one named guard per refusal, routing by the pipeline graph. Bundled to <kit>/bin/state.mjs.",
+  "type": "module",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "factory-run-state": "../../bin/state.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "bundle": "node scripts/bundle.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "dev": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"*.json\" \"*.mjs\" \"scripts/*.mjs\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"*.json\" \"*.mjs\" \"scripts/*.mjs\"",
+    "check": "npm run typecheck && npm run format:check && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "14.0.3",
+    "dotenv": "18.0.6",
+    "winston": "3.19.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "esbuild": "0.28.2",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

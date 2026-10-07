@@ -1,0 +1,528 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "adaptive-research-factory",
+  "name": "Adaptive Research Factory",
+  "author": "vitkuz",
+  "description": "Takes any question, classifies the problem, picks a reasoning framework, builds an issue tree and testable hypotheses, ranks them, researches the top ones on the web with a method, plan and queries per hypothesis, evaluates them, turns facts into insights and implications, writes a decision-oriented recommendation and saves reusable insights for future runs.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "knowledgePath": "{{factoryPath}}/knowledge",
+    "frameworksPath": "{{factoryPath}}/knowledge/frameworks",
+    "insightStore": "{{rootPath}}/factory-data/{{id}}/insight-store.jsonl"
+  },
+  "params": {
+    "question": "",
+    "context": "",
+    "maxHypotheses": 5
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "intake"
+  ],
+  "steps": {
+    "intake": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the intake agent.",
+        "You preserve the user's real question and never solve it, generate hypotheses, browse the web or invent missing context."
+      ],
+      "prompt": [
+        "Normalize this question without changing its meaning: {{question}}.",
+        "Extra context from the user: {{context}}.",
+        "Extract the question, objectives, constraints, entities, geography, explicit time horizon and user-provided assumptions, and list missing information only if it is essential.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [],
+      "output": [
+        "1-intake/intake.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/shared/research-principles.md",
+        "{{factoryPath}}/knowledge/shared/output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "retrieve-insights"
+          ]
+        }
+      }
+    },
+    "retrieve-insights": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a librarian.",
+        "You return past insights that are relevant to the new question and label them as prior evidence, never as settled truth."
+      ],
+      "prompt": [
+        "Read the insight store at {{insightStore}} (it may be missing or empty on a first run; then write an empty list) and return the past insights relevant to the intake's question,",
+        "with their original context, confidence and whether an outcome validated them.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json"
+      ],
+      "output": [
+        "2-retrieve-insights/prior-insights.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/insight-store.md",
+        "{{knowledgePath}}/shared/uncertainty.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "classify-problem"
+          ]
+        }
+      }
+    },
+    "classify-problem": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a problem classifier. You pick exactly one archetype and never generate hypotheses or research."
+      ],
+      "prompt": [
+        "Classify the question into exactly one primary problem archetype (DECIDE, UNDERSTAND, DISCOVER, PREDICT, OPTIMIZE, INVENT).",
+        "Return problemType, domain, decisionObject, rationale and confidence as JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "2-retrieve-insights/prior-insights.json"
+      ],
+      "output": [
+        "3-classify-problem/classification.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/routing/problem-archetypes.md",
+        "{{knowledgePath}}/shared/research-principles.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "select-framework"
+          ]
+        }
+      }
+    },
+    "select-framework": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a framework router. You choose only registered frameworks and never perform the research."
+      ],
+      "prompt": [
+        "Select the primary framework that structures the whole research problem, plus supporting frameworks.",
+        "The registry is the set of files in {{frameworksPath}} (ids = file names, read only their frontmatter); never name a framework that has no file there.",
+        "Return primaryFramework, supportingFrameworks, rationale and confidence as JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "3-classify-problem/classification.json"
+      ],
+      "output": [
+        "4-select-framework/framework.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/routing/framework-routing.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-issue-tree"
+          ]
+        }
+      }
+    },
+    "build-issue-tree": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a strategy consultant.",
+        "You decompose a question into a few distinct, decision-relevant branches and never research them."
+      ],
+      "prompt": [
+        "Build a MECE-style issue tree for the root question, structured by the chosen primary framework (read its body in {{frameworksPath}}/<id>.md).",
+        "Use 3-7 top-level branches; each must materially affect the answer, be a distinct uncertainty and be answerable through evidence.",
+        "Treat prior insights as prior evidence only.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "2-retrieve-insights/prior-insights.json",
+        "3-classify-problem/classification.json",
+        "4-select-framework/framework.json"
+      ],
+      "output": [
+        "5-build-issue-tree/issue-tree.json"
+      ],
+      "knowledge": [
+        "{{frameworksPath}}/mece.md",
+        "{{frameworksPath}}/hypothesis-driven.md",
+        "{{knowledgePath}}/shared/research-principles.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "generate-hypotheses"
+          ]
+        }
+      }
+    },
+    "generate-hypotheses": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a hypothesis writer.",
+        "Every hypothesis you write is specific, falsifiable and decision-relevant.",
+        "You never collect evidence."
+      ],
+      "prompt": [
+        "For each important issue-tree branch, write one or more testable hypotheses, each with id (H1, H2, ...), issueId, statement, falsificationQuestion, impact (0-1) and uncertainty (0-1).",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "2-retrieve-insights/prior-insights.json",
+        "5-build-issue-tree/issue-tree.json"
+      ],
+      "output": [
+        "6-generate-hypotheses/hypotheses.json"
+      ],
+      "knowledge": [
+        "{{frameworksPath}}/hypothesis-driven.md",
+        "{{knowledgePath}}/shared/uncertainty.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "prioritize-hypotheses"
+          ]
+        }
+      }
+    },
+    "prioritize-hypotheses": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a calculator. You compute, sort and cut; you never re-judge a score."
+      ],
+      "prompt": [
+        "Compute priority = impact × uncertainty for every hypothesis exactly as given (compute it with a one-line node or python3 command, not by hand),",
+        "sort descending (ties keep the original order), and mark the top {{maxHypotheses}} as selected and the rest as not researched.",
+        "Write JSON with the full sorted list and the selected ids.",
+        "Return DONE."
+      ],
+      "input": [
+        "6-generate-hypotheses/hypotheses.json"
+      ],
+      "output": [
+        "7-prioritize-hypotheses/ranked.json"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "select-methods"
+          ]
+        }
+      }
+    },
+    "select-methods": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a research-method router.",
+        "You choose only methods from the registry and the minimum set that can settle each hypothesis."
+      ],
+      "prompt": [
+        "For each selected hypothesis, choose a primaryMethod and supportingMethods from the method registry, with a rationale.",
+        "Write one file per hypothesis named <id>.methods.json (e.g. H1.methods.json).",
+        "Return DONE."
+      ],
+      "input": [
+        "6-generate-hypotheses/hypotheses.json",
+        "7-prioritize-hypotheses/ranked.json"
+      ],
+      "output": [
+        "8-select-methods/*.methods.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/routing/research-method-routing.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-research"
+          ]
+        }
+      }
+    },
+    "plan-research": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a research planner. You optimise for information gain, not report length."
+      ],
+      "prompt": [
+        "For each selected hypothesis, write an evidence plan: research questions (RQ1, RQ2, ...), evidence required, preferred source types, disconfirming evidence and stop conditions.",
+        "One file per hypothesis named <id>.plan.json.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "6-generate-hypotheses/hypotheses.json",
+        "7-prioritize-hypotheses/ranked.json",
+        "8-select-methods/*.methods.json"
+      ],
+      "output": [
+        "9-plan-research/*.plan.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/research/source-evaluation.md",
+        "{{knowledgePath}}/research/stop-conditions.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-queries"
+          ]
+        }
+      }
+    },
+    "plan-queries": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a search strategist. You plan searches and never answer the research questions."
+      ],
+      "prompt": [
+        "For every research question of every plan, write web queries: direct, primary-source, recent-data, contradiction and, where useful, site-specific;",
+        "each with researchQuestionId, query, purpose and preferredSourceType.",
+        "Use the languages of the question's geography as well as English.",
+        "One file per hypothesis named <id>.queries.json.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "9-plan-research/*.plan.json"
+      ],
+      "output": [
+        "10-plan-queries/*.queries.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/research/query-generation.md",
+        "{{knowledgePath}}/shared/source-quality.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "collect-evidence"
+          ]
+        }
+      }
+    },
+    "collect-evidence": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a field researcher.",
+        "You record exactly what a source says, with its date and type, and never turn weak evidence into fact."
+      ],
+      "prompt": [
+        "Run the planned web queries and collect evidence for each selected hypothesis until its stop conditions are met.",
+        "Record each item as id (E1, E2, ...), hypothesisId, claim, source, url, sourceType, publishedAt, retrievedAt, confidence, supportsHypothesis and limitations.",
+        "One file per hypothesis named <id>.evidence.json.",
+        "If {{outputDir}}/12-evaluate-hypotheses/evaluations.json exists, the evaluator sent back gaps: research only those gaps and add to the existing files.",
+        "Return DONE."
+      ],
+      "input": [
+        "9-plan-research/*.plan.json",
+        "10-plan-queries/*.queries.json",
+        "12-evaluate-hypotheses/evaluations.json"
+      ],
+      "output": [
+        "11-collect-evidence/*.evidence.json"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/research/web-research.md",
+        "{{knowledgePath}}/shared/source-quality.md",
+        "{{knowledgePath}}/research/source-evaluation.md",
+        "{{knowledgePath}}/research/contradiction-resolution.md",
+        "{{knowledgePath}}/research/stop-conditions.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "evaluate-hypotheses"
+          ]
+        }
+      }
+    },
+    "evaluate-hypotheses": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a hypothesis evaluator.",
+        "You judge only from the collected evidence and keep facts, interpretation and uncertainty apart."
+      ],
+      "prompt": [
+        "Evaluate each selected hypothesis from its evidence only:",
+        "status (SUPPORTED, PARTIALLY_SUPPORTED, REJECTED, INCONCLUSIVE), strongest supporting and contradicting evidence ids, confidence, unresolved unknowns, and for an INCONCLUSIVE hypothesis the specific gaps that more research could close.",
+        "Write JSON.",
+        "Return GAPS if at least one decision-relevant hypothesis is INCONCLUSIVE and its gaps are researchable (evidence goes back for one more round at most), otherwise DONE."
+      ],
+      "input": [
+        "6-generate-hypotheses/hypotheses.json",
+        "7-prioritize-hypotheses/ranked.json",
+        "9-plan-research/*.plan.json",
+        "11-collect-evidence/*.evidence.json"
+      ],
+      "output": [
+        "12-evaluate-hypotheses/evaluations.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/shared/evidence-quality.md",
+        "{{knowledgePath}}/shared/uncertainty.md",
+        "{{knowledgePath}}/research/contradiction-resolution.md"
+      ],
+      "transitions": {
+        "GAPS": {
+          "target": [
+            "collect-evidence"
+          ],
+          "max": 1,
+          "onMax": [
+            "derive-insights"
+          ]
+        },
+        "DONE": {
+          "target": [
+            "derive-insights"
+          ]
+        }
+      }
+    },
+    "derive-insights": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an analyst.",
+        "You turn facts into insights and implications for the user's decision and never introduce unsupported claims."
+      ],
+      "prompt": [
+        "Convert the evaluated evidence into FACT (what we know, with evidence ids), INSIGHT (what the facts mean together) and IMPLICATION (why it matters for the user's decision), per hypothesis.",
+        "Do not repeat facts as insights.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "11-collect-evidence/*.evidence.json",
+        "12-evaluate-hypotheses/evaluations.json"
+      ],
+      "output": [
+        "13-derive-insights/insights.json"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/shared/fact-insight-implication.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "synthesize"
+          ]
+        }
+      }
+    },
+    "synthesize": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a senior partner writing for a decision-maker.",
+        "Answer first, then reasons; never a chronological account of the research."
+      ],
+      "prompt": [
+        "Synthesize the whole run into a decision-oriented answer in the language of the question, using the Pyramid Principle:",
+        "recommendation (conditional where the evidence calls for it), key reasons, supporting evidence, major risks, unresolved unknowns, confidence, plus the hypotheses not researched.",
+        "Write the readable report and the JSON contract (recommendation, keyReasons, risks, unknowns, confidence).",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "2-retrieve-insights/prior-insights.json",
+        "3-classify-problem/classification.json",
+        "4-select-framework/framework.json",
+        "7-prioritize-hypotheses/ranked.json",
+        "12-evaluate-hypotheses/evaluations.json",
+        "13-derive-insights/insights.json"
+      ],
+      "output": [
+        "14-synthesize/recommendation.md",
+        "14-synthesize/recommendation.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/synthesis/pyramid-principle.md",
+        "{{knowledgePath}}/synthesis/executive-summary.md",
+        "{{knowledgePath}}/synthesis/recommendation-quality.md",
+        "{{factoryPath}}/knowledge/shared/output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "save-insights"
+          ]
+        }
+      }
+    },
+    "save-insights": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a records clerk. You append; you never rewrite or delete existing records."
+      ],
+      "prompt": [
+        "Append this run's reusable insights to the insight store at {{insightStore}} (create the file if missing), one JSON object per line in the store's schema, with outcome null and the run folder {{outputDir}} as the source.",
+        "Write the lines you appended to the output file.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "13-derive-insights/insights.json",
+        "14-synthesize/recommendation.json"
+      ],
+      "output": [
+        "15-save-insights/saved.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/insight-store.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

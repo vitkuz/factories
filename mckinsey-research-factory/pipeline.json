@@ -1,0 +1,372 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "mckinsey-research-factory",
+  "name": "McKinsey Research Factory",
+  "author": "vitkuz",
+  "description": "Frames a business question, gets the frame approved by a person, researches market, competitors, economics and operations in parallel, then synthesizes, pressure-tests and writes the report.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "language": "English",
+    "knowledgePath": "{{factoryPath}}/knowledge"
+  },
+  "params": {
+    "question": ""
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "frame-problem"
+  ],
+  "steps": {
+    "frame-problem": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an engagement manager at a top-tier strategy firm.",
+        "You frame problems before anyone researches them: a sharp key question, a MECE issue tree and falsifiable hypotheses.",
+        "You never answer the question yet."
+      ],
+      "prompt": [
+        "Frame this question as a decision problem, in {{language}}: \"{{question}}\".",
+        "Write the problem frame (situation-complication-question, key question, decision-maker, scope, success criteria, constraints, definitions, MECE issue tree, initial hypotheses with what would confirm or kill each)",
+        "and the research plan (every prioritized issue-tree branch assigned to exactly one lens: market, competitors, economics, operations; mark a lens NOT MATERIAL if nothing is assigned to it).",
+        "If you are given a decision file with requested changes, fix exactly what it lists and leave the rest.",
+        "Return DONE."
+      ],
+      "input": [],
+      "output": [
+        "1-frame-problem/problem-frame.md",
+        "1-frame-problem/research-plan.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/problem-framing.md",
+        "{{knowledgePath}}/research-lenses.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "approve-frame"
+          ]
+        }
+      }
+    },
+    "approve-frame": {
+      "agent": "human",
+      "prompt": [
+        "Read 1-frame-problem/problem-frame.md and 1-frame-problem/research-plan.md.",
+        "Answer APPROVE to start the four research lenses, or REVISE with what to change in the frame.",
+        "You may REVISE at most twice."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "1-frame-problem/research-plan.md"
+      ],
+      "output": [
+        "2-approve-frame/decision.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "research-market",
+            "research-competitors",
+            "research-economics",
+            "research-operations"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "frame-problem"
+          ],
+          "max": 2,
+          "onMax": [
+            "research-market",
+            "research-competitors",
+            "research-economics",
+            "research-operations"
+          ]
+        }
+      },
+      "knowledge": [
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ]
+    },
+    "research-market": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a market research analyst.",
+        "You size markets from two directions and never report a number without its source and date."
+      ],
+      "prompt": [
+        "Research the MARKET lens for \"{{question}}\" with web search.",
+        "Cover only the issue-tree branches the research plan assigns to market, and record evidence for and against each hypothesis they touch.",
+        "Honour any note in the decision file.",
+        "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
+        "Do not recommend anything.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "1-frame-problem/research-plan.md",
+        "2-approve-frame/decision.md"
+      ],
+      "output": [
+        "3-research-market/market.dossier.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/research-lenses.md",
+        "{{knowledgePath}}/evidence-quality.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "synthesize"
+          ]
+        }
+      }
+    },
+    "research-competitors": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a competitive intelligence analyst.",
+        "You profile real, named competitors from their own filings, pricing pages and credible press, not from listicles."
+      ],
+      "prompt": [
+        "Research the COMPETITORS lens for \"{{question}}\" with web search.",
+        "Cover only the issue-tree branches the research plan assigns to competitors, and record evidence for and against each hypothesis they touch.",
+        "Honour any note in the decision file.",
+        "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
+        "Do not recommend anything.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "1-frame-problem/research-plan.md",
+        "2-approve-frame/decision.md"
+      ],
+      "output": [
+        "4-research-competitors/competitors.dossier.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/research-lenses.md",
+        "{{knowledgePath}}/evidence-quality.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "synthesize"
+          ]
+        }
+      }
+    },
+    "research-economics": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a financial analyst.",
+        "You build the economics bottom-up, show every assumption, and give ranges rather than false precision."
+      ],
+      "prompt": [
+        "Research the ECONOMICS lens for \"{{question}}\" with web search.",
+        "Cover only the issue-tree branches the research plan assigns to economics, and record evidence for and against each hypothesis they touch.",
+        "Honour any note in the decision file.",
+        "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
+        "Do not recommend anything.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "1-frame-problem/research-plan.md",
+        "2-approve-frame/decision.md"
+      ],
+      "output": [
+        "5-research-economics/economics.dossier.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/research-lenses.md",
+        "{{knowledgePath}}/evidence-quality.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "synthesize"
+          ]
+        }
+      }
+    },
+    "research-operations": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are an operations and technology analyst.",
+        "You judge whether a plan can actually be executed: capabilities, technology, regulation and delivery risk."
+      ],
+      "prompt": [
+        "Research the OPERATIONS lens (technical, regulatory and execution feasibility) for \"{{question}}\" with web search.",
+        "Cover only the issue-tree branches the research plan assigns to operations, and record evidence for and against each hypothesis they touch.",
+        "Honour any note in the decision file.",
+        "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
+        "Do not recommend anything.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "1-frame-problem/research-plan.md",
+        "2-approve-frame/decision.md"
+      ],
+      "output": [
+        "6-research-operations/operations.dossier.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/research-lenses.md",
+        "{{knowledgePath}}/evidence-quality.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "synthesize"
+          ]
+        }
+      }
+    },
+    "synthesize": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a strategy partner.",
+        "You synthesize, you never summarize: every paragraph ends in a so-what that bears on the decision."
+      ],
+      "prompt": [
+        "Synthesize the four dossiers into an answer to the key question in the problem frame for \"{{question}}\".",
+        "Test every hypothesis (confirmed, revised or killed) against the evidence, keep the 3-5 insights that change the decision, quantify implications as ranges, and write evidence-backed recommendations.",
+        "If you are given a review with required fixes, fix exactly those and leave the rest.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "2-approve-frame/decision.md",
+        "3-research-market/market.dossier.md",
+        "4-research-competitors/competitors.dossier.md",
+        "5-research-economics/economics.dossier.md",
+        "6-research-operations/operations.dossier.md"
+      ],
+      "output": [
+        "7-synthesize/synthesis.md",
+        "7-synthesize/recommendations.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/synthesis.md",
+        "{{knowledgePath}}/evidence-quality.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "pressure-test"
+          ]
+        }
+      }
+    },
+    "pressure-test": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the red-team partner.",
+        "Your job is to find why this answer is wrong before the client does.",
+        "You never rewrite the work yourself."
+      ],
+      "prompt": [
+        "Pressure-test the synthesis and recommendations for \"{{question}}\" against the problem frame and the dossiers.",
+        "Write a review with numbered required fixes and separate nice-to-haves.",
+        "Return APPROVE if nothing required remains, or REVISE to send it back to synthesis.",
+        "You may REVISE at most twice."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "3-research-market/market.dossier.md",
+        "4-research-competitors/competitors.dossier.md",
+        "5-research-economics/economics.dossier.md",
+        "6-research-operations/operations.dossier.md",
+        "7-synthesize/synthesis.md",
+        "7-synthesize/recommendations.md"
+      ],
+      "output": [
+        "8-pressure-test/review.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/pressure-test.md",
+        "{{knowledgePath}}/evidence-quality.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "write-report"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "synthesize"
+          ],
+          "max": 2,
+          "onMax": [
+            "write-report"
+          ]
+        }
+      }
+    },
+    "write-report": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an executive writer. You lead with the answer, write action titles, and put the detail in appendices."
+      ],
+      "prompt": [
+        "Write the final executive report for \"{{question}}\" in {{language}}, using the pyramid principle.",
+        "Build it from the synthesis and recommendations; carry every claim's source; keep detailed research and the full source list in appendices.",
+        "List any required fix the review left unresolved under open questions.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "3-research-market/market.dossier.md",
+        "4-research-competitors/competitors.dossier.md",
+        "5-research-economics/economics.dossier.md",
+        "6-research-operations/operations.dossier.md",
+        "7-synthesize/synthesis.md",
+        "7-synthesize/recommendations.md",
+        "8-pressure-test/review.md"
+      ],
+      "output": [
+        "9-write-report/final-report.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/executive-writing.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

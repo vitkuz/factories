@@ -1,0 +1,850 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "feature-factory",
+  "name": "Feature Factory",
+  "author": "vitkuz",
+  "description": "Builds any feature the user asks for in an AWS project laid out as repos/back, repos/front, repos/tools and repos/docs with its spec in docs/context, back first: brief, parallel scouting, questions, an approved plan, spec first, then implement, deploy (dev, automatic, stops on danger) and test the back until it works, recording the API as built; then build the front locally against it, test it in a browser (fixing front or back), deploy the front, smoke-test, update docs, report and keep lessons.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "dataPath": "{{rootPath}}/factory-data/{{id}}",
+    "projectMap": "{{dataPath}}/project-map.md",
+    "lessonsFile": "{{dataPath}}/lessons.md",
+    "contextPath": "{{rootPath}}/docs/context",
+    "backPath": "{{rootPath}}/repos/back",
+    "frontPath": "{{rootPath}}/repos/front",
+    "toolsPath": "{{rootPath}}/repos/tools",
+    "docsPath": "{{rootPath}}/repos/docs"
+  },
+  "params": {
+    "feature": "",
+    "env": "dev",
+    "tenant": "",
+    "project": "",
+    "awsAccount": "",
+    "awsProfile": "default",
+    "awsRegion": "us-east-1"
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json",
+      "test -f {{projectMap}} || { echo \"feature-factory: write the project map {{projectMap}} first (start from {{factoryPath}}/knowledge/project/project-map.template.md)\" >&2; exit 1; }",
+      "mkdir -p {{dataPath}} && test -f {{lessonsFile}} || cp {{factoryPath}}/knowledge/pipeline/lessons.template.md {{lessonsFile}}",
+      "bash {{rootPath}}/factories/scripts/aws-preflight.sh {{awsProfile}} {{awsRegion}} {{awsAccount}}"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "feature-brief"
+  ],
+  "steps": {
+    "feature-brief": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a product analyst. You restate, you do not invent requirements."
+      ],
+      "prompt": [
+        "Turn the user's request into a feature brief: {{feature}}.",
+        "Write what the user wants in their words, who uses it (public reader, superadmin, API key), what is in and out of scope, and every point that is ambiguous.",
+        "Read {{contextPath}}/00-goal.md first.",
+        "Do not design the solution.",
+        "Return DONE."
+      ],
+      "input": [],
+      "output": [
+        "1-feature-brief/brief.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "scout-back",
+            "scout-front",
+            "scout-infra"
+          ]
+        }
+      }
+    },
+    "scout-back": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a backend scout. You report what exists with file paths; you never change code."
+      ],
+      "prompt": [
+        "Read the feature brief and scout {{backPath}} and the spec in {{contextPath}}:",
+        "which entities, routes, usecases, services, clients, stacks and SSM params the feature touches, what can be reused, and what is missing.",
+        "Cite file paths.",
+        "Change nothing.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-feature-brief/brief.md"
+      ],
+      "output": [
+        "2-scout-back/back.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "collect-questions"
+          ]
+        }
+      }
+    },
+    "scout-front": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a frontend scout. You report what exists with file paths; you never change code."
+      ],
+      "prompt": [
+        "Read the feature brief and scout {{frontPath}}: routes, pages, components, API calls and styles the feature touches, what can be reused, and what is missing.",
+        "Cite file paths.",
+        "Change nothing.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-feature-brief/brief.md"
+      ],
+      "output": [
+        "3-scout-front/front.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "collect-questions"
+          ]
+        }
+      }
+    },
+    "scout-infra": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are an infrastructure scout. You only read; you never create, change or delete anything in AWS."
+      ],
+      "prompt": [
+        "Read the feature brief and scout the infrastructure for env {{env}}:",
+        "the stacks in the account (describe-stacks), the project's SSM params under /{{tenant}}/{{project}}/{{env}}/, {{contextPath}}/12-deploy-order.md, and {{docsPath}}/src/data/{{env}}.json.",
+        "Say which stacks the feature will likely change and any risk to shared resources.",
+        "Read-only AWS calls only.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-feature-brief/brief.md"
+      ],
+      "output": [
+        "4-scout-infra/infra.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/aws/cli-in-wsl.md",
+        "{{factoryPath}}/knowledge/aws/safe-deploy.md",
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "collect-questions"
+          ]
+        }
+      }
+    },
+    "collect-questions": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a tech lead. You ask the fewest questions that unblock the plan."
+      ],
+      "prompt": [
+        "Read the brief and the three scout reports.",
+        "List only the questions the user must answer before a plan can be made (a choice with real trade-offs, or a missing fact); for each, offer 2-4 options and your recommendation.",
+        "Drop anything you can decide from the spec or the code.",
+        "Return QUESTIONS if the list is not empty, NONE if it is (then write 'No open questions' in the file)."
+      ],
+      "input": [
+        "1-feature-brief/brief.md",
+        "2-scout-back/back.md",
+        "3-scout-front/front.md",
+        "4-scout-infra/infra.md"
+      ],
+      "output": [
+        "5-collect-questions/questions.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}"
+      ],
+      "transitions": {
+        "QUESTIONS": {
+          "target": [
+            "answer-questions"
+          ]
+        },
+        "NONE": {
+          "target": [
+            "plan"
+          ]
+        }
+      }
+    },
+    "answer-questions": {
+      "agent": "human",
+      "prompt": [
+        "Read 5-collect-questions/questions.md and answer each question (a letter or your own words). Then answer ANSWERED."
+      ],
+      "input": [
+        "5-collect-questions/questions.md"
+      ],
+      "output": [
+        "6-answer-questions/answers.md"
+      ],
+      "transitions": {
+        "ANSWERED": {
+          "target": [
+            "plan"
+          ]
+        }
+      }
+    },
+    "plan": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the architect of this project.",
+        "You follow its spec and coding style and prefer the smallest change that delivers the feature."
+      ],
+      "prompt": [
+        "Write the implementation plan and the API contract for the feature, from the brief, the scout reports and the questions and answers (answers outrank your own preferences).",
+        "If {{outputDir}}/8-approve-plan/decision.md exists, the user sent the plan back: its note is your brief, address every point.",
+        "The plan may be revised at most twice.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-feature-brief/brief.md",
+        "2-scout-back/back.md",
+        "3-scout-front/front.md",
+        "4-scout-infra/infra.md",
+        "5-collect-questions/questions.md",
+        "6-answer-questions/*.md"
+      ],
+      "output": [
+        "7-plan/plan.md",
+        "7-plan/api-contract.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/planning/feature-plan.md",
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "approve-plan"
+          ]
+        }
+      }
+    },
+    "approve-plan": {
+      "agent": "human",
+      "prompt": [
+        "Read 7-plan/plan.md and 7-plan/api-contract.md.",
+        "Answer APPROVE to build it, REVISE with a note on what to change (at most twice), or ABORT to stop the run."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "7-plan/api-contract.md"
+      ],
+      "output": [
+        "8-approve-plan/decision.md"
+      ],
+      "transitions": {
+        "APPROVE": {
+          "target": [
+            "update-context-docs"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "plan"
+          ],
+          "max": 2
+        },
+        "ABORT": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    },
+    "update-context-docs": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the keeper of the project spec. Every change you make is one the plan asked for."
+      ],
+      "prompt": [
+        "Apply the plan's spec changes to {{contextPath}} before any code is written: entities, routes (with the bodies and answers from the API contract), file fields, tasks, stacks.",
+        "Change only what the plan names and keep each file's style.",
+        "Return DONE."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "7-plan/api-contract.md",
+        "8-approve-plan/decision.md"
+      ],
+      "output": [
+        "9-update-context-docs/changes.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "implement-back"
+          ]
+        }
+      }
+    },
+    "implement-back": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a senior TypeScript/CDK engineer on this project.",
+        "You follow its coding style to the letter: factories, no classes, explicit types, Zod at the edges, JSON logs."
+      ],
+      "prompt": [
+        "Implement the back part of the approved plan in {{backPath}}, following the updated spec and the API contract exactly.",
+        "Do not deploy.",
+        "Write in the changes file every file you changed and why.",
+        "Return DONE."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "7-plan/api-contract.md",
+        "9-update-context-docs/changes.md"
+      ],
+      "output": [
+        "10-implement-back/changes.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{lessonsFile}}"
+      ],
+      "workDir": "{{backPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "verify-back"
+          ]
+        }
+      }
+    },
+    "verify-back": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "Run the back gate in {{backPath}} and report every failure.",
+        "Change nothing.",
+        "Return PASS if every command exited 0 and no rule is broken, FAIL otherwise.",
+        "A failing gate is sent to be fixed at most three times."
+      ],
+      "input": [
+        "10-implement-back/changes.md"
+      ],
+      "output": [
+        "11-verify-back/verify.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/coding/verify-gates.md"
+      ],
+      "workDir": "{{backPath}}",
+      "transitions": {
+        "PASS": {
+          "target": [
+            "deploy-back"
+          ]
+        },
+        "FAIL": {
+          "target": [
+            "fix-back"
+          ],
+          "max": 3
+        }
+      }
+    },
+    "fix-back": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a senior TypeScript/CDK engineer.",
+        "You fix causes, not symptoms, and you never weaken a test or a gate to make it pass."
+      ],
+      "prompt": [
+        "Fix the back so the newest failing report passes:",
+        "read the latest of the verify, deploy, API test and browser test reports, find the cause, and fix it in {{backPath}} without changing the API contract.",
+        "If the contract itself is wrong, say so in the fix file.",
+        "Return DONE."
+      ],
+      "input": [
+        "7-plan/api-contract.md",
+        "10-implement-back/changes.md",
+        "11-verify-back/verify.md",
+        "13-deploy-back/*.md",
+        "14-test-back/*.md",
+        "18-test-front-e2e/*.md"
+      ],
+      "output": [
+        "12-fix-back/fix.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{lessonsFile}}"
+      ],
+      "workDir": "{{backPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "verify-back"
+          ]
+        }
+      }
+    },
+    "deploy-back": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a release engineer.",
+        "On dev you deploy without asking, in the documented order, but you never delete a stack, never touch another project's stack, and never replace stateful data."
+      ],
+      "prompt": [
+        "Deploy the back to env {{env}} without asking: this is the dev environment.",
+        "First protect the shared account: list the account's stacks, check new physical names are free, and run cdk diff for every stack of this project that changed.",
+        "If any diff deletes or replaces a stateful resource (table, bucket, secret, queue) or touches a stack this project does not own, deploy nothing and return DANGER with the details.",
+        "Otherwise deploy the changed stacks one by one in deploy order, then run the tools scripts the plan names (e.g. create-index) and npm run docs-values in {{toolsPath}}.",
+        "Stop at the first failure and report its CloudFormation reason.",
+        "Return DONE when all succeeded, FAILED when a deploy failed (sent to be fixed at most twice), or DANGER."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "10-implement-back/changes.md",
+        "11-verify-back/verify.md",
+        "12-fix-back/*.md"
+      ],
+      "output": [
+        "13-deploy-back/deploy.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/aws/cli-in-wsl.md",
+        "{{factoryPath}}/knowledge/aws/safe-deploy.md",
+        "{{lessonsFile}}"
+      ],
+      "workDir": "{{backPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "test-back"
+          ]
+        },
+        "FAILED": {
+          "target": [
+            "fix-back"
+          ],
+          "max": 2
+        },
+        "DANGER": {
+          "target": [
+            "report"
+          ]
+        }
+      }
+    },
+    "test-back": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a QA engineer. You test what was promised, report exactly what you saw, and leave no test data behind."
+      ],
+      "prompt": [
+        "Test the deployed API against the planned API contract with disposable scripts in your scratch folder, then clean up every smoke- item.",
+        "Record the contract as built: every new or changed route with its real body, answer, status codes and one example request and answer seen in the test, and every difference from the planned contract.",
+        "The front is built from this file, so it must be exact.",
+        "Return PASS if every case passed and cleanup succeeded, FAIL otherwise (sent to be fixed at most twice)."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "7-plan/api-contract.md",
+        "13-deploy-back/deploy.md"
+      ],
+      "output": [
+        "14-test-back/test-report.md",
+        "14-test-back/api-contract.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/aws/cli-in-wsl.md",
+        "{{factoryPath}}/knowledge/testing/disposable-api-tests.md",
+        "{{lessonsFile}}"
+      ],
+      "workDir": "{{outputDir}}/14-test-back/scratch",
+      "transitions": {
+        "PASS": {
+          "target": [
+            "implement-front"
+          ]
+        },
+        "FAIL": {
+          "target": [
+            "fix-back"
+          ],
+          "max": 2
+        }
+      }
+    },
+    "implement-front": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a senior React/TypeScript engineer on this project.",
+        "You follow its coding style: function components, explicit types, one axios instance, Zod for forms, no classes.",
+        "You build against the API as it really is."
+      ],
+      "prompt": [
+        "Implement the front part of the approved plan in {{frontPath}} against the deployed back, using the as-built API contract (it outranks the planned one).",
+        "If the front was already implemented in this run (the back was fixed after a browser test), only adapt it to what changed in the as-built contract.",
+        "Do not deploy.",
+        "Write in the changes file every file you changed and why.",
+        "Return DONE."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "14-test-back/api-contract.md",
+        "9-update-context-docs/changes.md",
+        "14-test-back/test-report.md"
+      ],
+      "output": [
+        "15-implement-front/changes.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{lessonsFile}}"
+      ],
+      "workDir": "{{frontPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-front-local"
+          ]
+        }
+      }
+    },
+    "build-front-local": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "Run the front gate in {{frontPath}} and report every failure.",
+        "Change nothing.",
+        "Return PASS if it builds and lints clean, FAIL otherwise (sent to be fixed at most three times)."
+      ],
+      "input": [
+        "15-implement-front/changes.md"
+      ],
+      "output": [
+        "16-build-front-local/build.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/coding/verify-gates.md"
+      ],
+      "workDir": "{{frontPath}}",
+      "transitions": {
+        "PASS": {
+          "target": [
+            "test-front-e2e"
+          ]
+        },
+        "FAIL": {
+          "target": [
+            "fix-front"
+          ],
+          "max": 3
+        }
+      }
+    },
+    "fix-front": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a senior React/TypeScript engineer. You fix causes, not symptoms."
+      ],
+      "prompt": [
+        "Fix the front so the newest failing report passes:",
+        "read the latest of the build and browser test reports, find the cause, and fix it in {{frontPath}} against the as-built API contract; never change the back.",
+        "Return DONE."
+      ],
+      "input": [
+        "14-test-back/api-contract.md",
+        "15-implement-front/changes.md",
+        "16-build-front-local/build.md",
+        "18-test-front-e2e/*.md"
+      ],
+      "output": [
+        "17-fix-front/fix.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{lessonsFile}}"
+      ],
+      "workDir": "{{frontPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-front-local"
+          ]
+        }
+      }
+    },
+    "test-front-e2e": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a QA engineer who tests like a user. You report exactly what you saw, with screenshots."
+      ],
+      "prompt": [
+        "Test the locally built front against the deployed API in a browser, for every screen and flow in the plan, then clean up every smoke- item.",
+        "Return PASS if every flow passed, FAIL if a front problem failed a flow (sent to be fixed at most twice), or BACK_BUG if the API answered differently from the as-built contract or wrongly (sent to the back, at most twice)."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "14-test-back/api-contract.md",
+        "14-test-back/test-report.md",
+        "16-build-front-local/build.md"
+      ],
+      "output": [
+        "18-test-front-e2e/e2e-report.md",
+        "18-test-front-e2e/*.png"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/aws/cli-in-wsl.md",
+        "{{factoryPath}}/knowledge/testing/browser-e2e.md",
+        "{{factoryPath}}/knowledge/testing/disposable-api-tests.md"
+      ],
+      "workDir": "{{frontPath}}",
+      "transitions": {
+        "PASS": {
+          "target": [
+            "deploy-front"
+          ]
+        },
+        "FAIL": {
+          "target": [
+            "fix-front"
+          ],
+          "max": 2
+        },
+        "BACK_BUG": {
+          "target": [
+            "fix-back"
+          ],
+          "max": 2
+        }
+      }
+    },
+    "deploy-front": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a release engineer. You run the documented deploy script and nothing else."
+      ],
+      "prompt": [
+        "Deploy the front with npm run deploy-front in {{toolsPath}} and report the website URL and the CloudFront invalidation id.",
+        "Return DONE, or FAILED with the error."
+      ],
+      "input": [
+        "18-test-front-e2e/e2e-report.md"
+      ],
+      "output": [
+        "19-deploy-front/deploy.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/aws/cli-in-wsl.md"
+      ],
+      "workDir": "{{toolsPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "smoke-test-prod"
+          ]
+        },
+        "FAILED": {
+          "target": [
+            "report"
+          ]
+        }
+      }
+    },
+    "smoke-test-prod": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "Smoke-test production: the website URL and the admin and public routes answer 200, the API /health answers ok, and the new feature's main page loads.",
+        "Change nothing, create nothing.",
+        "Return PASS or FAIL."
+      ],
+      "input": [
+        "19-deploy-front/deploy.md",
+        "7-plan/plan.md"
+      ],
+      "output": [
+        "20-smoke-test-prod/smoke.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}"
+      ],
+      "transitions": {
+        "PASS": {
+          "target": [
+            "update-docs"
+          ]
+        },
+        "FAIL": {
+          "target": [
+            "report"
+          ]
+        }
+      }
+    },
+    "update-docs": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a technical writer. Short sentences, everyday words, real values only."
+      ],
+      "prompt": [
+        "Update the docs site in {{docsPath}} for the feature, from the as-built API contract:",
+        "the pages that describe what changed (API routes, data, files, tasks, stacks), in the site's plain-language style, then run npm run docs-values in {{toolsPath}} and npm run build and npm run lint in {{docsPath}}.",
+        "Return DONE."
+      ],
+      "input": [
+        "7-plan/plan.md",
+        "14-test-back/api-contract.md",
+        "9-update-context-docs/changes.md",
+        "10-implement-back/changes.md",
+        "15-implement-front/changes.md"
+      ],
+      "output": [
+        "21-update-docs/changes.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}"
+      ],
+      "workDir": "{{docsPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "report"
+          ]
+        }
+      }
+    },
+    "report": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "Write the run report for the feature {{feature}} from every report in the run folder, including the steps that failed or were skipped.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-feature-brief/brief.md",
+        "7-plan/plan.md",
+        "8-approve-plan/decision.md",
+        "9-update-context-docs/changes.md",
+        "10-implement-back/changes.md",
+        "11-verify-back/*.md",
+        "12-fix-back/*.md",
+        "13-deploy-back/*.md",
+        "14-test-back/*.md",
+        "15-implement-front/*.md",
+        "16-build-front-local/*.md",
+        "17-fix-front/*.md",
+        "18-test-front-e2e/*.md",
+        "19-deploy-front/*.md",
+        "20-smoke-test-prod/*.md",
+        "21-update-docs/*.md"
+      ],
+      "output": [
+        "22-report/report.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/pipeline/run-report.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "lessons"
+          ]
+        }
+      }
+    },
+    "lessons": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a retrospective facilitator. You keep only lessons that would change what the next run does."
+      ],
+      "prompt": [
+        "Read the run report and every failure report of this run.",
+        "Append to {{lessonsFile}} one line per new lesson (what went wrong, what to do instead) that is not already there; name no run folder or step.",
+        "Write the lines you added in your output file.",
+        "Return DONE."
+      ],
+      "input": [
+        "22-report/report.md",
+        "11-verify-back/*.md",
+        "12-fix-back/*.md",
+        "13-deploy-back/*.md",
+        "14-test-back/*.md",
+        "15-implement-front/*.md",
+        "16-build-front-local/*.md",
+        "17-fix-front/*.md",
+        "18-test-front-e2e/*.md",
+        "19-deploy-front/*.md",
+        "20-smoke-test-prod/*.md",
+        "21-update-docs/*.md"
+      ],
+      "output": [
+        "23-lessons/lessons.md"
+      ],
+      "knowledge": [
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

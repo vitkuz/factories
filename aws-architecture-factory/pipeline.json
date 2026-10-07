@@ -1,0 +1,1145 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "aws-architecture-factory",
+  "name": "AWS Architecture Factory",
+  "author": "Vitali Kuzmenka",
+  "description": "Turns a natural-language system idea into an evidence-backed AWS architecture: drivers, hypotheses, AWS research, competing candidates, trade-offs, Well-Architected review, red team, a capped revision loop, then ADRs, cost model, Mermaid diagrams and a final report.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "knowledgePath": "{{factoryPath}}/knowledge",
+    "adaptivePath": "{{factoryPath}}/knowledge/adaptive",
+    "frameworksPath": "{{factoryPath}}/knowledge/frameworks",
+    "insightStore": "{{rootPath}}/factory-data/{{id}}/insight-store.jsonl"
+  },
+  "params": {
+    "idea": "",
+    "context": "",
+    "maxHypotheses": 8
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "intake"
+  ],
+  "steps": {
+    "intake": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the architecture intake analyst.",
+        "You preserve the user's real idea and never design, pick AWS services or invent missing requirements."
+      ],
+      "prompt": [
+        "Normalize this system idea into a structured architecture brief without changing its meaning: {{idea}}.",
+        "Extra context from the user: {{context}}.",
+        "Record what the user stated, what is missing, and which existing systems, integrations and constraints they named.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [],
+      "output": [
+        "1-intake/intake.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/architecture-drivers.md",
+        "{{adaptivePath}}/shared/output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "extract-drivers"
+          ]
+        }
+      }
+    },
+    "extract-drivers": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an architecture driver analyst.",
+        "You decide what properties the system must achieve before anyone names a service.",
+        "Every inferred value becomes a visible assumption."
+      ],
+      "prompt": [
+        "Extract the architecture drivers from the intake brief into the driver model, and write every inferred value as an assumption with reason, confidence and decision impact.",
+        "Flag high-impact low-confidence assumptions at the top of the assumptions file.",
+        "If {{outputDir}}/3-confirm-drivers/decision.md exists, the user sent the drivers back: apply exactly the corrections it lists and change nothing else.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "3-confirm-drivers/decision.md"
+      ],
+      "output": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/architecture-drivers.md",
+        "{{knowledgePath}}/architecture/reversible-decisions.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "confirm-drivers"
+          ]
+        }
+      }
+    },
+    "confirm-drivers": {
+      "agent": "human",
+      "prompt": [
+        "Read 2-extract-drivers/drivers.json and 2-extract-drivers/assumptions.md — the high-impact low-confidence assumptions are listed first.",
+        "Answer CONFIRM to research and design on these drivers, or REVISE with the corrections (traffic, latency, budget, compliance, team, ...).",
+        "You may REVISE at most twice."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md"
+      ],
+      "output": [
+        "3-confirm-drivers/decision.md"
+      ],
+      "transitions": {
+        "CONFIRM": {
+          "target": [
+            "retrieve-insights"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "extract-drivers"
+          ],
+          "max": 2,
+          "onMax": [
+            "retrieve-insights"
+          ]
+        }
+      }
+    },
+    "retrieve-insights": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a librarian.",
+        "You return past architecture insights relevant to the new system and label them as prior evidence, never as settled truth."
+      ],
+      "prompt": [
+        "Read the insight store at {{insightStore}} (it may be missing or empty on a first run; then write an empty list) and return the past insights relevant to these drivers,",
+        "with their original context, confidence and whether a production outcome validated them.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "2-extract-drivers/drivers.json"
+      ],
+      "output": [
+        "4-retrieve-insights/prior-insights.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/insight-store.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "classify-intent"
+          ]
+        }
+      }
+    },
+    "classify-intent": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the architecture intent router. You pick intents only from the registered list and never invent one."
+      ],
+      "prompt": [
+        "Classify the request into one primary intent and any secondary intents from the registry, with a confidence and a one-line reason each.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "2-extract-drivers/drivers.json",
+        "4-retrieve-insights/prior-insights.json"
+      ],
+      "output": [
+        "5-classify-intent/intent.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/intents.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-issue-tree"
+          ]
+        }
+      }
+    },
+    "build-issue-tree": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a principal architect decomposing a problem.",
+        "You choose only the concerns that are material to this system, never the full checklist."
+      ],
+      "prompt": [
+        "Build the architecture issue tree for this system: 3 to 8 material concerns, MECE, each tied to the drivers it serves.",
+        "Write Markdown and a JSON copy.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "2-extract-drivers/drivers.json",
+        "4-retrieve-insights/prior-insights.json",
+        "5-classify-intent/intent.json"
+      ],
+      "output": [
+        "6-build-issue-tree/issue-tree.md",
+        "6-build-issue-tree/issue-tree.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/issue-tree-guidelines.md",
+        "{{frameworksPath}}/mece.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "generate-hypotheses"
+          ]
+        }
+      }
+    },
+    "generate-hypotheses": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a hypothesis-driven architect. Every hypothesis you write can be proved wrong by a named fact."
+      ],
+      "prompt": [
+        "Generate falsifiable design hypotheses for the material concerns in the issue tree, at most {{maxHypotheses}} in total,",
+        "each with rationale tied to drivers, falsification questions, impact, uncertainty, irreversibility, blast radius and research cost scored 0–1.",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "4-retrieve-insights/prior-insights.json",
+        "6-build-issue-tree/issue-tree.json"
+      ],
+      "output": [
+        "7-generate-hypotheses/hypotheses.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/design-hypotheses.md",
+        "{{frameworksPath}}/hypothesis-driven.md",
+        "{{knowledgePath}}/architecture/reversible-decisions.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "prioritize-hypotheses"
+          ]
+        }
+      }
+    },
+    "prioritize-hypotheses": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a calculator. You apply the priority formula exactly and do not re-judge the scores."
+      ],
+      "prompt": [
+        "Compute the priority of every hypothesis with the formula in the knowledge, rank them, and mark which ones are researched this run (priority above the cut-off).",
+        "Write JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "7-generate-hypotheses/hypotheses.json"
+      ],
+      "output": [
+        "8-prioritize-hypotheses/ranked.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/design-hypotheses.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-research"
+          ]
+        }
+      }
+    },
+    "plan-research": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are an AWS research planner.",
+        "Every research action you plan names the unknown that could change the architecture decision."
+      ],
+      "prompt": [
+        "For each hypothesis marked for research, select methods from the method registry only, name the documentation targets and queries, and set its stop conditions and budget.",
+        "One file per hypothesis named <hypothesisId>.plan.json.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "7-generate-hypotheses/hypotheses.json",
+        "8-prioritize-hypotheses/ranked.json"
+      ],
+      "output": [
+        "9-plan-research/*.plan.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/research/method-registry.md",
+        "{{knowledgePath}}/research/aws-source-quality.md",
+        "{{knowledgePath}}/research/stop-conditions.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "collect-evidence"
+          ]
+        }
+      }
+    },
+    "collect-evidence": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are an AWS constraint researcher.",
+        "You record exactly what a source says, with its URL and date, prefer AWS documentation over everything else, and never quote AWS limits from memory."
+      ],
+      "prompt": [
+        "Run the research plans: collect evidence for each hypothesis until its stop conditions are met, and extract every service constraint, quota and pricing shape with its source.",
+        "One file per hypothesis named <hypothesisId>.evidence.json.",
+        "If {{outputDir}}/11-evaluate-hypotheses/evaluations.json exists, the evaluator sent back gaps: research only those gaps and add to the existing files.",
+        "Return DONE."
+      ],
+      "input": [
+        "9-plan-research/*.plan.json",
+        "11-evaluate-hypotheses/evaluations.json"
+      ],
+      "output": [
+        "10-collect-evidence/*.evidence.json"
+      ],
+      "knowledge": [
+        "{{adaptivePath}}/research/web-research.md",
+        "{{knowledgePath}}/research/aws-source-quality.md",
+        "{{knowledgePath}}/research/stop-conditions.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "evaluate-hypotheses"
+          ]
+        }
+      }
+    },
+    "evaluate-hypotheses": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an architecture hypothesis evaluator. A fact without an architecture implication is unfinished work."
+      ],
+      "prompt": [
+        "Evaluate each researched hypothesis as SUPPORTED, REFUTED or INCONCLUSIVE against its falsification questions, and for every material fact write fact → insight → architecture implication.",
+        "Return GAPS, listing the gaps in the evaluations file, only if a gap could change a high-priority decision and more research can close it; you may return GAPS at most once.",
+        "Otherwise return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "7-generate-hypotheses/hypotheses.json",
+        "8-prioritize-hypotheses/ranked.json",
+        "10-collect-evidence/*.evidence.json"
+      ],
+      "output": [
+        "11-evaluate-hypotheses/evaluations.json",
+        "11-evaluate-hypotheses/implications.md"
+      ],
+      "knowledge": [
+        "{{adaptivePath}}/shared/fact-insight-implication.md",
+        "{{knowledgePath}}/research/stop-conditions.md"
+      ],
+      "transitions": {
+        "GAPS": {
+          "target": [
+            "collect-evidence"
+          ],
+          "max": 1,
+          "onMax": [
+            "generate-candidates"
+          ]
+        },
+        "DONE": {
+          "target": [
+            "generate-candidates"
+          ]
+        }
+      }
+    },
+    "generate-candidates": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are a solution architect who refuses to anchor on the first plausible design.",
+        "Your candidates differ in operating model, scaling model, cost structure or failure modes, not in naming."
+      ],
+      "prompt": [
+        "Generate 2–3 materially different candidate AWS architectures (one only if the drivers leave no real alternative, and say why).",
+        "Every AWS service gets an explicit role;",
+        "every candidate gets components, data flow, failure model, strengths, weaknesses, assumptions, risks, operational complexity, cost shape, best-fit and failure conditions.",
+        "Write Markdown and JSON.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "6-build-issue-tree/issue-tree.json",
+        "11-evaluate-hypotheses/evaluations.json",
+        "11-evaluate-hypotheses/implications.md"
+      ],
+      "output": [
+        "12-generate-candidates/candidates.md",
+        "12-generate-candidates/candidates.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/candidate-architectures.md",
+        "{{knowledgePath}}/architecture/failure-and-security-modeling.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "compare-candidates"
+          ]
+        }
+      }
+    },
+    "compare-candidates": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are a trade-off analyst.",
+        "Criteria do not weigh the same; their weights come from the drivers, and you show the arithmetic."
+      ],
+      "prompt": [
+        "Compare the candidates in a trade-off matrix whose dimensions and weights come from the drivers,",
+        "add a sensitivity note for every high-impact low-confidence assumption that could flip the ranking, and state which candidate wins under which conditions.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "12-generate-candidates/candidates.json"
+      ],
+      "output": [
+        "13-compare-candidates/tradeoff-analysis.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/tradeoff-analysis.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "select-architecture"
+          ]
+        }
+      }
+    },
+    "select-architecture": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are the accountable solution architect.",
+        "Every decision you make maps to a driver, and your confidence reflects unresolved uncertainty, not your preference."
+      ],
+      "prompt": [
+        "Select the recommended architecture.",
+        "Write the full architecture (components with roles, data flow, failure model, security model, observability) and the selection record:",
+        "decision, decision drivers, rejected alternatives with reasons, critical assumptions, one-way-door decisions, and confidence.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "11-evaluate-hypotheses/implications.md",
+        "12-generate-candidates/candidates.json",
+        "13-compare-candidates/tradeoff-analysis.md"
+      ],
+      "output": [
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/candidate-architectures.md",
+        "{{knowledgePath}}/architecture/failure-and-security-modeling.md",
+        "{{knowledgePath}}/architecture/reversible-decisions.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "review-operational-excellence",
+            "review-security",
+            "review-reliability",
+            "review-performance-efficiency",
+            "review-cost-optimization",
+            "review-sustainability",
+            "review-domain-lenses"
+          ]
+        }
+      }
+    },
+    "review-operational-excellence": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are an AWS Well-Architected reviewer for the Operational Excellence pillar.",
+        "You review decision quality, not checklist compliance, and you never redesign the architecture yourself."
+      ],
+      "prompt": [
+        "Review the selected architecture against the OPERATIONAL_EXCELLENCE pillar.",
+        "Return findings, high risks, medium risks and improvements, each tied to a component and a driver, and set architectureChangesRequired.",
+        "Write JSON with pillar OPERATIONAL_EXCELLENCE.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "output": [
+        "15-review-operational-excellence/review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/well-architected/operational-excellence.md",
+        "{{knowledgePath}}/well-architected/review-output.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "red-team"
+          ]
+        }
+      }
+    },
+    "review-security": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are an AWS Well-Architected reviewer for the Security pillar.",
+        "You review decision quality, not checklist compliance, and you never redesign the architecture yourself."
+      ],
+      "prompt": [
+        "Review the selected architecture against the SECURITY pillar.",
+        "Return findings, high risks, medium risks and improvements, each tied to a component and a driver, and set architectureChangesRequired.",
+        "Write JSON with pillar SECURITY.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "output": [
+        "16-review-security/review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/well-architected/security.md",
+        "{{knowledgePath}}/well-architected/review-output.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "red-team"
+          ]
+        }
+      }
+    },
+    "review-reliability": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are an AWS Well-Architected reviewer for the Reliability pillar.",
+        "You review decision quality, not checklist compliance, and you never redesign the architecture yourself."
+      ],
+      "prompt": [
+        "Review the selected architecture against the RELIABILITY pillar.",
+        "Return findings, high risks, medium risks and improvements, each tied to a component and a driver, and set architectureChangesRequired.",
+        "Write JSON with pillar RELIABILITY.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "output": [
+        "17-review-reliability/review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/well-architected/reliability.md",
+        "{{knowledgePath}}/well-architected/review-output.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "red-team"
+          ]
+        }
+      }
+    },
+    "review-performance-efficiency": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are an AWS Well-Architected reviewer for the Performance Efficiency pillar.",
+        "You review decision quality, not checklist compliance, and you never redesign the architecture yourself."
+      ],
+      "prompt": [
+        "Review the selected architecture against the PERFORMANCE_EFFICIENCY pillar.",
+        "Return findings, high risks, medium risks and improvements, each tied to a component and a driver, and set architectureChangesRequired.",
+        "Write JSON with pillar PERFORMANCE_EFFICIENCY.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "output": [
+        "18-review-performance-efficiency/review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/well-architected/performance-efficiency.md",
+        "{{knowledgePath}}/well-architected/review-output.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "red-team"
+          ]
+        }
+      }
+    },
+    "review-cost-optimization": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are an AWS Well-Architected reviewer for the Cost Optimization pillar.",
+        "You review decision quality, not checklist compliance, and you never redesign the architecture yourself."
+      ],
+      "prompt": [
+        "Review the selected architecture against the COST_OPTIMIZATION pillar.",
+        "Return findings, high risks, medium risks and improvements, each tied to a component and a driver, and set architectureChangesRequired.",
+        "Write JSON with pillar COST_OPTIMIZATION.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "output": [
+        "19-review-cost-optimization/review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/well-architected/cost-optimization.md",
+        "{{knowledgePath}}/well-architected/review-output.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "red-team"
+          ]
+        }
+      }
+    },
+    "review-sustainability": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are an AWS Well-Architected reviewer for the Sustainability pillar.",
+        "You review decision quality, not checklist compliance, and you never redesign the architecture yourself."
+      ],
+      "prompt": [
+        "Review the selected architecture against the SUSTAINABILITY pillar.",
+        "Return findings, high risks, medium risks and improvements, each tied to a component and a driver, and set architectureChangesRequired.",
+        "Write JSON with pillar SUSTAINABILITY.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "output": [
+        "20-review-sustainability/review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/well-architected/sustainability.md",
+        "{{knowledgePath}}/well-architected/review-output.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "red-team"
+          ]
+        }
+      }
+    },
+    "review-domain-lenses": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are a specialist architecture reviewer.",
+        "You apply only the lenses this workload actually needs and check current AWS lens availability instead of trusting memory."
+      ],
+      "prompt": [
+        "Select the AWS Well-Architected lenses and internal custom lenses relevant to this architecture and its intent, then review the selected architecture through each.",
+        "Write JSON in the review output shape with pillar DOMAIN_LENSES and the lenses applied.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "5-classify-intent/intent.json",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json"
+      ],
+      "output": [
+        "21-review-domain-lenses/review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/well-architected/domain-lenses.md",
+        "{{knowledgePath}}/well-architected/review-output.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "red-team"
+          ]
+        }
+      }
+    },
+    "red-team": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are the architecture red team.",
+        "You try to break the design and you never rewrite it; you produce findings, not fixes."
+      ],
+      "prompt": [
+        "Attack the selected architecture from every mandatory angle that applies, using the pillar and lens reviews as leads, and classify each finding as critical, major or minor with the scenario that triggers it and the change it requires.",
+        "Write JSON and Markdown.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json",
+        "15-review-operational-excellence/review.json",
+        "16-review-security/review.json",
+        "17-review-reliability/review.json",
+        "18-review-performance-efficiency/review.json",
+        "19-review-cost-optimization/review.json",
+        "20-review-sustainability/review.json",
+        "21-review-domain-lenses/review.json"
+      ],
+      "output": [
+        "22-red-team/red-team.json",
+        "22-red-team/red-team.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/review/architecture-red-team.md",
+        "{{knowledgePath}}/review/risk-severity.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "validation-gate"
+          ]
+        }
+      }
+    },
+    "validation-gate": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are the architecture validation gate.",
+        "You pass nothing with an unresolved blocking condition, and every high risk ends either mitigated or explicitly accepted."
+      ],
+      "prompt": [
+        "Aggregate the pillar reviews, the lens review and the red-team findings — plus the targeted re-review when it exists — into one deduplicated risk register, each risk mapped to a mitigation or an accepted risk.",
+        "Then check the blocking conditions.",
+        "Treat the revised architecture as current when it exists, otherwise the selected one.",
+        "Return PASS if nothing blocks, PASS_WITH_ACCEPTED_RISKS if only accepted non-critical risks remain, REVISE with the required changes listed in the gate file if a revision can fix the blockers,",
+        "or BLOCKED if a blocker needs a human decision (a core driver or assumption is wrong).",
+        "The architecture may be revised at most twice."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json",
+        "24-revise-architecture/architecture.md",
+        "15-review-operational-excellence/review.json",
+        "16-review-security/review.json",
+        "17-review-reliability/review.json",
+        "18-review-performance-efficiency/review.json",
+        "19-review-cost-optimization/review.json",
+        "20-review-sustainability/review.json",
+        "21-review-domain-lenses/review.json",
+        "22-red-team/red-team.json",
+        "25-targeted-re-review/re-review.json"
+      ],
+      "output": [
+        "23-validation-gate/risk-register.md",
+        "23-validation-gate/gate.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/review/validation-gate.md",
+        "{{knowledgePath}}/review/risk-severity.md"
+      ],
+      "transitions": {
+        "PASS": {
+          "target": [
+            "generate-adrs",
+            "generate-cost-model",
+            "generate-diagrams"
+          ]
+        },
+        "PASS_WITH_ACCEPTED_RISKS": {
+          "target": [
+            "generate-adrs",
+            "generate-cost-model",
+            "generate-diagrams"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "revise-architecture"
+          ],
+          "max": 2,
+          "onMax": [
+            "escalate"
+          ]
+        },
+        "BLOCKED": {
+          "target": [
+            "escalate"
+          ]
+        }
+      }
+    },
+    "revise-architecture": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are the accountable solution architect on a revision pass.",
+        "You fix exactly what the gate listed and leave every other decision untouched."
+      ],
+      "prompt": [
+        "Revise the architecture to resolve the required changes in the gate file.",
+        "Treat the revised architecture as current when it exists, otherwise the selected one.",
+        "Write the complete revised architecture, plus a change log mapping each required change to what changed.",
+        "Do not restart the design unless a core assumption changed, and say so if it did.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json",
+        "24-revise-architecture/architecture.md",
+        "23-validation-gate/risk-register.md",
+        "23-validation-gate/gate.json"
+      ],
+      "output": [
+        "24-revise-architecture/architecture.md",
+        "24-revise-architecture/changes.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/architecture/failure-and-security-modeling.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "targeted-re-review"
+          ]
+        }
+      }
+    },
+    "targeted-re-review": {
+      "agent": "general-purpose",
+      "model": "fable",
+      "system": [
+        "You are an architecture reviewer doing a targeted re-review.",
+        "You check the required changes and anything they touched, not the whole design again."
+      ],
+      "prompt": [
+        "Check whether each required change in the gate file is resolved by the revised architecture, and whether the revision introduced a new risk in what it touched.",
+        "Write JSON with resolved, unresolved and newly introduced findings.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "23-validation-gate/gate.json",
+        "24-revise-architecture/architecture.md",
+        "24-revise-architecture/changes.md"
+      ],
+      "output": [
+        "25-targeted-re-review/re-review.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/review/risk-severity.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "validation-gate"
+          ]
+        }
+      }
+    },
+    "escalate": {
+      "agent": "human",
+      "prompt": [
+        "The architecture did not pass the validation gate — it was BLOCKED, or two revisions did not resolve it.",
+        "Read 23-validation-gate/gate.json and 23-validation-gate/risk-register.md.",
+        "Answer ACCEPT_RISKS to produce the artifacts with the open risks recorded as accepted by you, or ABORT to end the run without artifacts."
+      ],
+      "input": [
+        "23-validation-gate/gate.json",
+        "23-validation-gate/risk-register.md"
+      ],
+      "output": [
+        "26-escalate/decision.md"
+      ],
+      "transitions": {
+        "ACCEPT_RISKS": {
+          "target": [
+            "generate-adrs",
+            "generate-cost-model",
+            "generate-diagrams"
+          ]
+        },
+        "ABORT": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    },
+    "generate-adrs": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are an architecture decision recorder.",
+        "You write ADRs only for decisions the architecture actually made, never new ones."
+      ],
+      "prompt": [
+        "Write one ADR per material decision in the final architecture, using the template, each mapped to its drivers and with a concrete Revisit When.",
+        "Treat the revised architecture as current when it exists, otherwise the selected one.",
+        "One file per decision named ADR-<nnn>-<topic>.md.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json",
+        "24-revise-architecture/architecture.md",
+        "13-compare-candidates/tradeoff-analysis.md",
+        "23-validation-gate/risk-register.md",
+        "26-escalate/decision.md",
+        "11-evaluate-hypotheses/implications.md"
+      ],
+      "output": [
+        "27-generate-adrs/ADR-*.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/output/adr-template.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "write-final-report"
+          ]
+        }
+      }
+    },
+    "generate-cost-model": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a cloud cost analyst.",
+        "You model cost shape and ranges, cite pricing pages, and never present an estimate as a quote."
+      ],
+      "prompt": [
+        "Model the cost of the final architecture: cost shape per service, then normal load, peak load and 10× growth as ranges where inputs are uncertain, with the cost drivers and the unbounded-cost risks.",
+        "Treat the revised architecture as current when it exists, otherwise the selected one.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json",
+        "24-revise-architecture/architecture.md",
+        "13-compare-candidates/tradeoff-analysis.md",
+        "23-validation-gate/risk-register.md",
+        "26-escalate/decision.md",
+        "10-collect-evidence/*.evidence.json"
+      ],
+      "output": [
+        "28-generate-cost-model/cost-model.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/output/cost-model.md",
+        "{{knowledgePath}}/research/aws-source-quality.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "write-final-report"
+          ]
+        }
+      }
+    },
+    "generate-diagrams": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a diagram author.",
+        "You draw only components and flows that exist in the final architecture text; a diagram never adds anything."
+      ],
+      "prompt": [
+        "Generate Mermaid diagrams from the final architecture:",
+        "system context, AWS component architecture, request/data flow, and failure/retry flow, plus async/event flow, network boundaries or DR topology when the architecture has them.",
+        "Treat the revised architecture as current when it exists, otherwise the selected one.",
+        "One file per diagram named <type>.mmd.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json",
+        "24-revise-architecture/architecture.md",
+        "13-compare-candidates/tradeoff-analysis.md",
+        "23-validation-gate/risk-register.md",
+        "26-escalate/decision.md"
+      ],
+      "output": [
+        "29-generate-diagrams/*.mmd"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/output/diagram-guidelines.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "write-final-report"
+          ]
+        }
+      }
+    },
+    "write-final-report": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the architecture synthesizer.",
+        "The report explains why every AWS service exists, and you never introduce a decision the run did not make."
+      ],
+      "prompt": [
+        "Write the final architecture report for {{idea}}:",
+        "drivers, assumptions, the selected architecture and why, rejected alternatives, trade-offs, review and red-team outcome, risk register summary, cost shape, diagrams embedded, links to the ADRs, and open questions.",
+        "Treat the revised architecture as current when it exists, otherwise the selected one.",
+        "If the escalation decision exists, state which risks the user accepted.",
+        "Return DONE."
+      ],
+      "input": [
+        "2-extract-drivers/drivers.json",
+        "2-extract-drivers/assumptions.md",
+        "14-select-architecture/architecture.md",
+        "14-select-architecture/selection.json",
+        "24-revise-architecture/architecture.md",
+        "13-compare-candidates/tradeoff-analysis.md",
+        "23-validation-gate/risk-register.md",
+        "26-escalate/decision.md",
+        "6-build-issue-tree/issue-tree.md",
+        "11-evaluate-hypotheses/implications.md",
+        "22-red-team/red-team.md",
+        "27-generate-adrs/ADR-*.md",
+        "28-generate-cost-model/cost-model.md",
+        "29-generate-diagrams/*.mmd"
+      ],
+      "output": [
+        "30-write-final-report/final-architecture.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/output/architecture-report.md",
+        "{{adaptivePath}}/shared/output-style.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "save-insights"
+          ]
+        }
+      }
+    },
+    "save-insights": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a records clerk. You append; you never rewrite or delete existing records."
+      ],
+      "prompt": [
+        "Append this run's reusable architecture insights to the insight store at {{insightStore}} (create the file if missing), one JSON object per line in the store's schema, with outcome null and the run folder {{outputDir}} as the source.",
+        "Write the lines you appended to the output file.",
+        "Return DONE."
+      ],
+      "input": [
+        "1-intake/intake.json",
+        "11-evaluate-hypotheses/implications.md",
+        "14-select-architecture/selection.json",
+        "30-write-final-report/final-architecture.md"
+      ],
+      "output": [
+        "31-save-insights/saved.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/insight-store.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

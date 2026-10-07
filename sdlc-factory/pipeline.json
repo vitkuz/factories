@@ -1,0 +1,513 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "sdlc-factory",
+  "name": "SDLC Factory",
+  "description": "Runs one feature through a ten-role SDLC line (consulting, product, design, architecture, engineering, data, infra, security, QA, delivery), each role writing one artefact for the next, stopping at the first hard stop, then builds an evidence pack (seams, human gates, eval, cost, risk, recommendation) for a person to confirm.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "language": "English"
+  },
+  "params": {
+    "feature": "",
+    "brief": "none given; derive the run brief from the feature"
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "write-feature-brief"
+  ],
+  "steps": {
+    "write-feature-brief": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a delivery lead framing one factory run.",
+        "You scope to a single small-to-medium feature and you list decisions for people to make, never make them."
+      ],
+      "prompt": [
+        "Turn this feature into the feature file and the factory run brief: {{feature}}",
+        "Run brief notes from the user: {{brief}}",
+        "Write `feature.md` (description and 3 to 6 observable acceptance criteria) and `factory-run-brief.md` (the Delivery frame) in the output folder, in {{language}}.",
+        "Where the user gave no detail, write a clearly labelled ASSUMPTION rather than inventing facts.",
+        "Return DONE when both files are written."
+      ],
+      "input": [],
+      "output": [
+        "1-write-feature-brief/feature.md",
+        "1-write-feature-brief/factory-run-brief.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/feature-brief.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "write-opportunity-brief"
+          ]
+        }
+      }
+    },
+    "write-opportunity-brief": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a Consulting / SME advisor, role 100 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the opportunity brief for the feature, framed by the run brief.",
+        "Write `100-opportunity-brief.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "1-write-feature-brief/*.md"
+      ],
+      "output": [
+        "2-write-opportunity-brief/100-opportunity-brief.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-100-consulting.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "write-spec"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "write-spec": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a Product owner / business analyst, role 200 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the feature spec from the opportunity brief.",
+        "Write `200-spec.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "2-write-opportunity-brief/100-opportunity-brief.md"
+      ],
+      "output": [
+        "3-write-spec/200-spec.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-200-product.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "design-experience"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "design-experience": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a product designer, role 300 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the design note (flow, states, content, accessibility) from the feature spec.",
+        "Write `300-design.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "3-write-spec/200-spec.md"
+      ],
+      "output": [
+        "4-design-experience/300-design.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-300-design.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "design-architecture"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "design-architecture": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a solution architect, role 400 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the thin architecture decision note from the design note.",
+        "Write `400-architecture.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "4-design-experience/300-design.md"
+      ],
+      "output": [
+        "5-design-architecture/400-architecture.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-400-architecture.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-implementation"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "plan-implementation": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a senior software engineer, role 500 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the implementation plan for one vertical slice from the architecture note.",
+        "Write `500-implementation.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "5-design-architecture/400-architecture.md"
+      ],
+      "output": [
+        "6-plan-implementation/500-implementation.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-500-engineering.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "design-data"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "design-data": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a data engineer and data steward, role 700 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the feature data design from the architecture note.",
+        "Write `700-data-design.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "5-design-architecture/400-architecture.md"
+      ],
+      "output": [
+        "7-design-data/700-data-design.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-700-data.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-infra"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "plan-infra": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are an infrastructure and operations engineer, role 800 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the runtime and operations plan from the architecture note, the implementation plan and the data design.",
+        "Write `800-infra.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "5-design-architecture/400-architecture.md",
+        "6-plan-implementation/500-implementation.md",
+        "7-design-data/700-data-design.md"
+      ],
+      "output": [
+        "8-plan-infra/800-infra.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-800-infrastructure.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "review-security"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "review-security": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an application security reviewer, role 900 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the security review from the architecture note, the implementation plan, the data design and the operations plan.",
+        "Write `900-security-review.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "5-design-architecture/400-architecture.md",
+        "6-plan-implementation/500-implementation.md",
+        "7-design-data/700-data-design.md",
+        "8-plan-infra/800-infra.md"
+      ],
+      "output": [
+        "9-review-security/900-security-review.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-900-security.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-tests"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "plan-tests": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a QA lead, role 600 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the test plan from the feature spec, the implementation plan, the data design, the operations plan and the security review.",
+        "Write `600-test-plan.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when the artefact is written, including any training-open gates and labelled assumptions in its handoff notes.",
+        "Return HARD_STOP instead, after still writing the artefact with the reason under \"Hard stop\", if continuing would need secrets, credentials, client-confidential or production data, a live write, or a risk, compliance, budget, policy or release decision only a person can make."
+      ],
+      "input": [
+        "3-write-spec/200-spec.md",
+        "6-plan-implementation/500-implementation.md",
+        "7-design-data/700-data-design.md",
+        "8-plan-infra/800-infra.md",
+        "9-review-security/900-security-review.md"
+      ],
+      "output": [
+        "10-plan-tests/600-test-plan.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-600-qa.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-release"
+          ]
+        },
+        "HARD_STOP": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "plan-release": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a delivery manager, role 1000 on a ten-role SDLC line.",
+        "You do only your role, produce one artefact for the next roles and surface human decisions instead of making them."
+      ],
+      "prompt": [
+        "Write the release plan and the improvement suggestions from the run brief and every prior role artefact.",
+        "Write `1000-release-plan.md` and `improvement-suggestions.md` in {{language}}, ending with the handoff notes section.",
+        "Return DONE when both files are written; record any open release, risk or budget decision as a human gate rather than deciding it."
+      ],
+      "input": [
+        "1-write-feature-brief/*.md",
+        "2-write-opportunity-brief/*.md",
+        "3-write-spec/*.md",
+        "4-design-experience/*.md",
+        "5-design-architecture/*.md",
+        "6-plan-implementation/*.md",
+        "7-design-data/*.md",
+        "8-plan-infra/*.md",
+        "9-review-security/*.md",
+        "10-plan-tests/*.md"
+      ],
+      "output": [
+        "11-plan-release/1000-release-plan.md",
+        "11-plan-release/improvement-suggestions.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/role-1000-delivery.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-pack"
+          ]
+        }
+      }
+    },
+    "build-evidence-pack": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a factory run auditor.",
+        "You judge the run on evidence in the artefacts, record stalls and gaps honestly and never invent clean handoffs."
+      ],
+      "prompt": [
+        "Build the evidence pack for this SDLC line run in {{language}}.",
+        "Some role folders may be empty: the line stops at the first hard stop, and a missing artefact is evidence, not something to fill in.",
+        "Read the run state at {{outputDir}}/state.json and the pipeline at {{outputDir}}/pipeline.json for which roles ran, their models and passes; every role spec here is `fallback`.",
+        "Write `seam-ledger.md`, `human-gates.md`, `eval-report.md`, `cost-log.md`, `risk-note.md`, `final-recommendation.md` and `run-record.md`, and set the result state.",
+        "If a review decision file is provided, this is a revision pass: fix exactly what it asks for and leave the rest.",
+        "Return DONE when all seven files are written."
+      ],
+      "input": [
+        "1-write-feature-brief/*.md",
+        "2-write-opportunity-brief/*.md",
+        "3-write-spec/*.md",
+        "4-design-experience/*.md",
+        "5-design-architecture/*.md",
+        "6-plan-implementation/*.md",
+        "7-design-data/*.md",
+        "8-plan-infra/*.md",
+        "9-review-security/*.md",
+        "10-plan-tests/*.md",
+        "11-plan-release/*.md"
+      ],
+      "output": [
+        "12-build-evidence-pack/seam-ledger.md",
+        "12-build-evidence-pack/human-gates.md",
+        "12-build-evidence-pack/eval-report.md",
+        "12-build-evidence-pack/cost-log.md",
+        "12-build-evidence-pack/risk-note.md",
+        "12-build-evidence-pack/final-recommendation.md",
+        "12-build-evidence-pack/run-record.md"
+      ],
+      "knowledge": [
+        "{{factoryPath}}/knowledge/line-contract.md",
+        "{{factoryPath}}/knowledge/evidence-pack.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "confirm-pack"
+          ]
+        }
+      }
+    },
+    "confirm-pack": {
+      "agent": "human",
+      "prompt": [
+        "Read 12-build-evidence-pack/run-record.md and final-recommendation.md.",
+        "Answer ACCEPT to close the run, or REVISE and say what to change in the pack (at most 2 revisions)."
+      ],
+      "input": [
+        "12-build-evidence-pack/run-record.md",
+        "12-build-evidence-pack/final-recommendation.md"
+      ],
+      "output": [
+        "13-confirm-pack/decision.md"
+      ],
+      "transitions": {
+        "ACCEPT": {
+          "target": [
+            "END"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "build-evidence-pack"
+          ],
+          "max": 2,
+          "onMax": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}

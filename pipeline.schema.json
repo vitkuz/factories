@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factories/pipeline.schema.json",
+  "title": "Pipeline (event graph)",
+  "description": "A pipeline built by /create-any-factory. It describes an agent graph: execution starts at START, each step runs one subagent (or asks a person), and the single event the step returns names the edge to the steps that run next. Sequencing lives in the edges — there is no wave order and no dependsOn. The legacy wave dialect has its own schema, pipeline.legacy.schema.json. Vendored copy: this file travels inside the skill, so the graph a generated pipeline skill runs is described beside the pipeline rather than by reference to a schema elsewhere in the repo.",
+  "type": "object",
+  "required": [
+    "id",
+    "constants",
+    "outputDir",
+    "START",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Path to this schema, for editor autocomplete."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "description": "Unique kebab-case id. It names the pipeline folder factories/<id> and the /command.",
+      "examples": [
+        "ticket-to-production-factory",
+        "feature-factory"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional human-readable name, e.g. \"Feature Factory\". The id stays the machine name."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional author of the pipeline."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional summary of what the pipeline does, for people. The graph itself is the specification; SKILL.md carries the user-facing description."
+    },
+    "constants": {
+      "$ref": "#/$defs/constants"
+    },
+    "params": {
+      "type": "object",
+      "description": "Runtime inputs, as a map of name to default. An empty string means there is no useful default and the runner must ask before the run starts.",
+      "propertyNames": {
+        "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ],
+        "description": "The default value. Empty string = required, ask the user."
+      },
+      "examples": [
+        {
+          "ticket": "",
+          "dev_env": "dev",
+          "local_port": 4200
+        }
+      ]
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Shell commands the harness runs around the whole pipeline. Empty by default. Commands are substituted like every other string; {{outputDir}} is the resolved run folder.",
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "type": "array",
+          "description": "Run in order before the first step. A failure stops the run.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "after": {
+          "type": "array",
+          "description": "Run in order after the run ends, whether it succeeded or not.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "outputDir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the run's declared output files land. Supports {{variable}}, including the built-ins {{id}}, {{slug}} and {{date}}.",
+      "examples": [
+        "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}"
+      ]
+    },
+    "START": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stepName"
+      },
+      "minItems": 1,
+      "description": "The entry step(s). An array, so a run may fan out from the start."
+    },
+    "steps": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "The nodes of the graph, keyed by a kebab-case name that says what the step does — 'fetch-ticket', 'review-plans'. It must start with a letter: '1-fetch-ticket' is the wave dialect's '{order}-{agent}' key, and the ordinal belongs to the output folder, not to the step.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "$defs": {
+    "stepName": {
+      "type": "string",
+      "description": "A step name, or the reserved \"END\" which finishes the run.",
+      "pattern": "^([a-z][a-z0-9]*(-[a-z0-9]+)*|END)$"
+    },
+    "constants": {
+      "type": "object",
+      "required": [
+        "rootPath",
+        "skillPath",
+        "homePath"
+      ],
+      "description": "Fixed values baked into the pipeline, substituted like params but never asked for. Always opens with the three path anchors rootPath, skillPath and homePath, which the runner resolves to absolute paths before substituting.",
+      "propertyNames": {
+        "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      },
+      "properties": {
+        "rootPath": {
+          "type": "string",
+          "const": "cwd",
+          "description": "Required in every pipeline, always \"cwd\". The runner resolves it to the working directory the harness was started in — the repository root when opened from the project — so a step can anchor a path instead of guessing its working directory. The run folder, the knowledge library and the scripts anchor on it. Declaring it is mandatory; using it is not.",
+          "default": "cwd"
+        },
+        "skillPath": {
+          "type": "string",
+          "const": ".",
+          "description": "Required in every pipeline, always \".\". The runner resolves it to the factory's own Claude skill folder, .claude/skills/<id>, where its wrapper SKILL.md lives. Files that belong to this pipeline alone are reached through the factoryPath constant instead. Declaring it is mandatory; using it is not.",
+          "default": "."
+        },
+        "homePath": {
+          "type": "string",
+          "const": "~",
+          "description": "Required in every pipeline, always \"~\". The runner resolves it to the current user home directory, for things that live per user rather than per project: ~/.claude, credentials, a global config. Declaring it is mandatory; using it is not.",
+          "default": "~"
+        }
+      },
+      "examples": [
+        {
+          "rootPath": "cwd",
+          "skillPath": ".",
+          "homePath": "~",
+          "factoryPath": "{{rootPath}}/factories/{{id}}",
+          "knowledgePath": "{{factoryPath}}/knowledge"
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "description": "One node of the graph: a subagent to spawn, or a person to ask.",
+      "required": [
+        "agent",
+        "prompt",
+        "transitions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The agent type that runs this step, or \"human\" to stop and ask a person. A custom subagent is named as its profile names it.",
+          "examples": [
+            "general-purpose",
+            "human",
+            "backend-scout"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "enum": [
+            "fable",
+            "opus",
+            "sonnet",
+            "haiku"
+          ],
+          "description": "Optional. Which Claude model runs this step, as the alias the harness's Agent tool accepts: fable (Claude Fable 5.1, the most capable, twice the price of opus), opus (Claude Opus 5: plan, build, review, decide), sonnet (Claude Sonnet 5: research, scout, draft, test, deploy), haiku (Claude Haiku 4.5: fetch, copy, serve, assemble). Omitted, the subagent inherits the model the harness runs on. Ignored on a human step.",
+          "examples": [
+            "opus",
+            "sonnet",
+            "haiku"
+          ]
+        },
+        "prompt": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "What the step does THIS RUN, one line per item; the runner joins the lines with a newline. The task, the paths it works on, and the events it may return. Standing instruction belongs in a knowledge file instead. On a human step this is the question, and it must name every answer in 'transitions', spelled as the graph spells it."
+        },
+        "system": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Who the subagent is, one line per item; the runner joins the lines with a newline. Role, standing rules, tone. Appended to the agent type's own system prompt, never replacing it. Keep it to a few sentences — past a paragraph it is knowledge. Ignored on a human step."
+        },
+        "input": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files the step reads, each produced by an earlier step's 'output'. Globs allowed. On a human step, what the person should look at before answering."
+        },
+        "output": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files the step writes, as '{n}-{step-name}/...' where n is its position. Globs allowed when the count varies. On a human step this is the decision file the runner writes.",
+          "examples": [
+            [
+              "3-review-plans/review.md"
+            ]
+          ]
+        },
+        "knowledge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Reference files whose content is pasted into the task message. Every file lives next to the factory at {{factoryPath}}/knowledge/, so the factory folder is self-contained; a file two factories need is copied into each. Ignored on a human step."
+        },
+        "workDir": {
+          "type": "string",
+          "description": "Directory this step works in and may freely modify. Omitted, the step works under outputDir."
+        },
+        "transitions": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "The edges out of this step, keyed by the event it returns. The step returns exactly one event, and that event's edge decides what runs next.",
+          "propertyNames": {
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "description": "UPPER_SNAKE_CASE. An event names an OUTCOME — DONE, APPROVE, REVISE — never the next step."
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "agent": {
+                "const": "human"
+              }
+            },
+            "required": [
+              "agent"
+            ]
+          },
+          "then": {
+            "required": [
+              "output"
+            ],
+            "description": "A human step must record its decision somewhere, so the run stays auditable and later steps can obey the choice."
+          }
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "description": "One outgoing edge: where an event routes, and the limits on it.",
+      "required": [
+        "target"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepName"
+          },
+          "minItems": 1,
+          "description": "Where the run goes next. Several names fan out and start in parallel; several steps naming the same target fan in, and that target runs once after all of them. \"END\" finishes the run."
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many times this edge may be taken in one run. EVERY loop needs one — an edge pointing back with no cap can spin forever. Say the limit in the prompt too, but this is what enforces it."
+        },
+        "onMax": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepName"
+          },
+          "minItems": 1,
+          "description": "Where the run goes once 'max' is spent. Without it, a spent cap stops the run and reports that the cap was reached."
+        },
+        "condition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The edge is taken only when this holds. Comparisons (> >= < <= == !=) combined with and/or/not and parentheses, over numbers, quoted text and booleans. Names are written bare and resolve from constants, params, the built-ins, then values the step reported alongside its event — last wins. Leave at least one edge unconditional as the fallback.",
+          "examples": [
+            "findings > 1",
+            "score >= 8 and status == 'clean'",
+            "not (retries > threshold)"
+          ]
+        }
+      },
+      "dependentRequired": {
+        "onMax": [
+          "max"
+        ]
+      }
+    }
+  }
+}

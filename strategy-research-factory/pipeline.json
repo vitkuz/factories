@@ -1,0 +1,882 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "strategy-research-factory",
+  "name": "Strategy Research Factory",
+  "author": "vitkuz",
+  "description": "Supports a strategic decision: frames it, builds an issue tree and hypotheses, picks frameworks, researches market, customer, competition and environment, tests the hypotheses and writes a reviewed report.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "knowledgePath": "{{factoryPath}}/knowledge",
+    "frameworksPath": "{{factoryPath}}/knowledge/frameworks"
+  },
+  "params": {
+    "question": "",
+    "audience": "the CEO and the executive team",
+    "geography": "global",
+    "timeframe": "today to 2030",
+    "language": "English"
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json",
+      "python3 {{rootPath}}/factories/scripts/frameworks/build-index.py {{frameworksPath}} {{outputDir}}"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "frame-decision"
+  ],
+  "steps": {
+    "frame-decision": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an engagement manager at a strategy consulting firm.",
+        "You never start from a framework or a topic; you start from the decision someone has to make.",
+        "You do not search the web in this step."
+      ],
+      "prompt": [
+        "Turn this request into a decision brief: \"{{question}}\".",
+        "Audience: {{audience}}.",
+        "Geography: {{geography}}.",
+        "Timeframe: {{timeframe}}.",
+        "If the request is a topic, not a decision, infer the most plausible decision and say you inferred it.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/brief.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [],
+      "output": [
+        "1-frame-decision/brief.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-issue-tree"
+          ]
+        }
+      }
+    },
+    "build-issue-tree": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a strategy consultant who builds MECE issue trees.",
+        "The decision drives the tree, never a framework: you do not name or apply any consulting framework in this step."
+      ],
+      "prompt": [
+        "Build the issue tree for the decision in the brief.",
+        "On a revision pass, the runner hands you the file carrying the feedback (the framework router's treeFeedback or the review): fix exactly what it lists and keep every branch id that did not change.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/issue-tree.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml"
+      ],
+      "output": [
+        "2-build-issue-tree/issue-tree.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "identify-subproblems"
+          ]
+        }
+      }
+    },
+    "identify-subproblems": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are an analyst who classifies questions by the kind of analysis they need.",
+        "You label problems; you never pick frameworks."
+      ],
+      "prompt": [
+        "Classify every leaf of the issue tree as an analytical sub-problem.",
+        "Use the problem-type vocabulary in {{outputDir}}/framework-vocabulary.yaml; coin a new kebab-case type only when none fits and mark it `custom: true`.",
+        "Do not open the framework files or the framework index.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/subproblems.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "2-build-issue-tree/issue-tree.yaml"
+      ],
+      "output": [
+        "3-identify-subproblems/subproblems.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "route-frameworks"
+          ]
+        }
+      }
+    },
+    "route-frameworks": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the framework router.",
+        "Frameworks are optional tools; zero is a valid answer and custom MECE analysis beats a forced fit.",
+        "You prefer the smallest useful set and you record every rejection with its reason."
+      ],
+      "prompt": [
+        "Route every sub-problem to zero, one or several frameworks.",
+        "The metadata index is {{outputDir}}/framework-index.yaml: read it, and open no framework file under {{frameworksPath}}.",
+        "Return DONE when every sub-problem is routed.",
+        "Return REVISE_TREE only when a branch cannot be routed because the tree itself is wrong (overlapping branches, a leaf that is not a question, a missing branch the decision needs);",
+        "write the reason under `treeFeedback` first.",
+        "The tree may be sent back at most once.",
+        "Write in {{language}}."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/framework-routing.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "2-build-issue-tree/issue-tree.yaml",
+        "3-identify-subproblems/subproblems.yaml"
+      ],
+      "output": [
+        "4-route-frameworks/framework-selection.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "form-hypotheses"
+          ]
+        },
+        "REVISE_TREE": {
+          "target": [
+            "build-issue-tree"
+          ],
+          "max": 1,
+          "onMax": [
+            "form-hypotheses"
+          ]
+        }
+      }
+    },
+    "form-hypotheses": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a hypothesis-driven strategist. Every hypothesis you write is a bet that evidence could kill."
+      ],
+      "prompt": [
+        "Write falsifiable hypotheses for the issue tree.",
+        "Open only the framework files named in `loadList` of the framework selection, at {{frameworksPath}}/<id>.md, and no others.",
+        "On a revision pass, the runner hands you the review file: fix exactly what it assigns to hypotheses and keep the ids of hypotheses that did not change.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/hypotheses.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "2-build-issue-tree/issue-tree.yaml",
+        "4-route-frameworks/framework-selection.yaml"
+      ],
+      "output": [
+        "5-form-hypotheses/hypotheses.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "plan-research"
+          ]
+        }
+      }
+    },
+    "plan-research": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a research planner.",
+        "You refuse broad research: every task you write traces decision -> issue-tree question -> hypothesis, and belongs to exactly one lens."
+      ],
+      "prompt": [
+        "Turn the hypotheses into research tasks across the five lenses: market, customer, competition, environment, counter-evidence.",
+        "Use the `requiredEvidence` of the selected frameworks from {{outputDir}}/framework-index.yaml to decide what data each task needs; do not open framework files.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/research-plan.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "4-route-frameworks/framework-selection.yaml",
+        "5-form-hypotheses/hypotheses.yaml"
+      ],
+      "output": [
+        "6-plan-research/research-plan.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "research-market",
+            "research-customer",
+            "research-competition",
+            "research-environment",
+            "research-counterevidence"
+          ]
+        }
+      }
+    },
+    "research-market": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the market analyst: size, growth, prices, costs, unit economics and financials.",
+        "You gather evidence; you never write conclusions or the report."
+      ],
+      "prompt": [
+        "Run every research task assigned to lens `market` in the plan, and nothing else.",
+        "If no task has that lens, write an empty evidence file and a notes file saying so.",
+        "On a gap pass, the runner hands you the file listing the gaps: run only the gaps for your lens and append to your files.",
+        "Write notes in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/evidence-record.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "5-form-hypotheses/hypotheses.yaml",
+        "6-plan-research/research-plan.yaml"
+      ],
+      "output": [
+        "7-research-market/evidence.jsonl",
+        "7-research-market/notes.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "research-customer": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the customer analyst: segments, needs, buying behaviour, adoption and willingness to pay.",
+        "You gather evidence; you never write conclusions or the report."
+      ],
+      "prompt": [
+        "Run every research task assigned to lens `customer` in the plan, and nothing else.",
+        "If no task has that lens, write an empty evidence file and a notes file saying so.",
+        "On a gap pass, the runner hands you the file listing the gaps: run only the gaps for your lens and append to your files.",
+        "Write notes in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/evidence-record.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "5-form-hypotheses/hypotheses.yaml",
+        "6-plan-research/research-plan.yaml"
+      ],
+      "output": [
+        "8-research-customer/evidence.jsonl",
+        "8-research-customer/notes.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "research-competition": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the competition analyst: players, products, pricing, strategy, funding and M&A, substitutes and barriers.",
+        "You gather evidence; you never write conclusions or the report."
+      ],
+      "prompt": [
+        "Run every research task assigned to lens `competition` in the plan, and nothing else.",
+        "If no task has that lens, write an empty evidence file and a notes file saying so.",
+        "On a gap pass, the runner hands you the file listing the gaps: run only the gaps for your lens and append to your files.",
+        "Write notes in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/evidence-record.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "5-form-hypotheses/hypotheses.yaml",
+        "6-plan-research/research-plan.yaml"
+      ],
+      "output": [
+        "9-research-competition/evidence.jsonl",
+        "9-research-competition/notes.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "research-environment": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the environment analyst: technology shifts, regulation, policy and macro forces.",
+        "You gather evidence; you never write conclusions or the report."
+      ],
+      "prompt": [
+        "Run every research task assigned to lens `environment` in the plan, and nothing else.",
+        "If no task has that lens, write an empty evidence file and a notes file saying so.",
+        "On a gap pass, the runner hands you the file listing the gaps: run only the gaps for your lens and append to your files.",
+        "Write notes in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/evidence-record.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "5-form-hypotheses/hypotheses.yaml",
+        "6-plan-research/research-plan.yaml"
+      ],
+      "output": [
+        "10-research-environment/evidence.jsonl",
+        "10-research-environment/notes.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "research-counterevidence": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the red-team analyst.",
+        "Your job is to kill hypotheses: kill tests, bear cases, failed attempts, contrary data and rival explanations.",
+        "You gather evidence; you never write conclusions or the report."
+      ],
+      "prompt": [
+        "Run every research task assigned to lens `counter-evidence` in the plan, and run the kill test of every priority-1 hypothesis even if no task names it.",
+        "On a gap pass, the runner hands you the file listing the gaps: run only the gaps for your lens and append to your files.",
+        "Write notes in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/evidence-record.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "5-form-hypotheses/hypotheses.yaml",
+        "6-plan-research/research-plan.yaml"
+      ],
+      "output": [
+        "11-research-counterevidence/evidence.jsonl",
+        "11-research-counterevidence/notes.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-evidence-base"
+          ]
+        }
+      }
+    },
+    "build-evidence-base": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are the evidence clerk.",
+        "You merge, deduplicate, grade and reconcile; you research nothing new and you remove nothing silently."
+      ],
+      "prompt": [
+        "Merge the five lens files into one evidence base. Write in {{language}}. Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/evidence-base.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "5-form-hypotheses/hypotheses.yaml",
+        "7-research-market/evidence.jsonl",
+        "7-research-market/notes.md",
+        "8-research-customer/evidence.jsonl",
+        "8-research-customer/notes.md",
+        "9-research-competition/evidence.jsonl",
+        "9-research-competition/notes.md",
+        "10-research-environment/evidence.jsonl",
+        "10-research-environment/notes.md",
+        "11-research-counterevidence/evidence.jsonl",
+        "11-research-counterevidence/notes.md"
+      ],
+      "output": [
+        "12-build-evidence-base/evidence.jsonl",
+        "12-build-evidence-base/evidence-summary.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "test-hypotheses"
+          ]
+        }
+      }
+    },
+    "test-hypotheses": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are the hypothesis tester.",
+        "You look for the evidence that would reject each hypothesis before you count the evidence that supports it, and you never let an untested claim through as supported."
+      ],
+      "prompt": [
+        "Judge every hypothesis against the evidence base.",
+        "Return DONE when every hypothesis has a status.",
+        "Return RESEARCH_MORE only when a priority-1 hypothesis is INSUFFICIENT_EVIDENCE and the missing fact is findable in public sources;",
+        "list each gap under `researchGaps` with its lens first.",
+        "More research may be requested at most once.",
+        "Write in {{language}}."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/hypothesis-testing.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "5-form-hypotheses/hypotheses.yaml",
+        "6-plan-research/research-plan.yaml",
+        "12-build-evidence-base/evidence.jsonl",
+        "12-build-evidence-base/evidence-summary.md"
+      ],
+      "output": [
+        "13-test-hypotheses/hypothesis-results.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "synthesize-insights"
+          ]
+        },
+        "RESEARCH_MORE": {
+          "target": [
+            "research-market",
+            "research-customer",
+            "research-competition",
+            "research-environment",
+            "research-counterevidence"
+          ],
+          "max": 1,
+          "onMax": [
+            "synthesize-insights"
+          ]
+        }
+      }
+    },
+    "synthesize-insights": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a strategy partner who synthesizes.",
+        "You do not summarize sources; you climb every finding to so-what and now-what, and you add no fact that is not in the evidence base."
+      ],
+      "prompt": [
+        "Synthesize the answer to the decision from the tested hypotheses and the evidence base.",
+        "For the interpretation of framework results, open only the framework files named in `loadList` of the framework selection, at {{frameworksPath}}/<id>.md.",
+        "On a revision pass, the runner hands you the review file: fix exactly what it assigns to the synthesis.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/synthesis.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "2-build-issue-tree/issue-tree.yaml",
+        "4-route-frameworks/framework-selection.yaml",
+        "12-build-evidence-base/evidence.jsonl",
+        "12-build-evidence-base/evidence-summary.md",
+        "13-test-hypotheses/hypothesis-results.yaml"
+      ],
+      "output": [
+        "14-synthesize-insights/synthesis.yaml"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "build-storyline"
+          ]
+        }
+      }
+    },
+    "build-storyline": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You structure arguments with the Pyramid Principle. You organize the synthesis; you never discover new points."
+      ],
+      "prompt": [
+        "Build the answer-first storyline from the synthesis.",
+        "On a revision pass, the runner hands you the storyline review or the report review: fix exactly what it lists and keep the rest.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/storyline.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "12-build-evidence-base/evidence-summary.md",
+        "14-synthesize-insights/synthesis.yaml"
+      ],
+      "output": [
+        "15-build-storyline/storyline.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "review-storyline"
+          ]
+        }
+      }
+    },
+    "review-storyline": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a skeptical engagement partner reviewing a storyline before a word of prose is written.",
+        "You attack structure and logic, never wording, and you do not rewrite the storyline yourself."
+      ],
+      "prompt": [
+        "Review the storyline.",
+        "Return PASS when it has no CRITICAL or MAJOR finding.",
+        "Return REVISE when the storyline misuses a sound synthesis (broken pyramid, label headings, a message the synthesis does not carry); at most two storyline revisions.",
+        "Return REVISE_SYNTHESIS when the synthesis under it is weak (a finding with no so-what, a recommendation with no insight); at most one.",
+        "Near a cap, prefer PASS with the open findings listed.",
+        "Write in {{language}}."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/storyline-review.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "13-test-hypotheses/hypothesis-results.yaml",
+        "14-synthesize-insights/synthesis.yaml",
+        "15-build-storyline/storyline.md"
+      ],
+      "output": [
+        "16-review-storyline/storyline-review.yaml"
+      ],
+      "transitions": {
+        "PASS": {
+          "target": [
+            "write-report"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "build-storyline"
+          ],
+          "max": 2,
+          "onMax": [
+            "write-report"
+          ]
+        },
+        "REVISE_SYNTHESIS": {
+          "target": [
+            "synthesize-insights"
+          ],
+          "max": 1,
+          "onMax": [
+            "write-report"
+          ]
+        }
+      }
+    },
+    "write-report": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You write executive-quality consulting reports: answer first, claim headings, every fact cited to an evidence id.",
+        "You do not search; a fact missing from the evidence base is a known gap."
+      ],
+      "prompt": [
+        "Write the report from the approved storyline for {{audience}}.",
+        "List any storyline finding still open in the storyline review under limitations.",
+        "On a revision pass, the runner hands you the review file: fix exactly the findings assigned to the report and leave everything else untouched.",
+        "Write in {{language}}.",
+        "Return DONE."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/report.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "4-route-frameworks/framework-selection.yaml",
+        "12-build-evidence-base/evidence.jsonl",
+        "12-build-evidence-base/evidence-summary.md",
+        "13-test-hypotheses/hypothesis-results.yaml",
+        "14-synthesize-insights/synthesis.yaml",
+        "15-build-storyline/storyline.md",
+        "16-review-storyline/storyline-review.yaml"
+      ],
+      "output": [
+        "17-write-report/report.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "review-report"
+          ]
+        }
+      }
+    },
+    "review-report": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a skeptical senior strategy partner with an obligation to dissent.",
+        "You attack the argument, not the prose.",
+        "You never fix the work yourself."
+      ],
+      "prompt": [
+        "Attack the report and every artifact behind it.",
+        "Return PASS when no CRITICAL finding is open and a skeptical decision maker could trust and check the answer.",
+        "Return REVISE when findings can be fixed, and set `reviseTo` to the earliest stage whose defect causes them: issue-tree, frameworks, hypotheses, research, synthesis, storyline or report.",
+        "The whole study may be sent back at most three times; on the fourth review return PASS with every open finding listed.",
+        "Return FAIL only when the decision cannot be answered defensibly from public evidence at all.",
+        "Append this pass to review-history.md.",
+        "Write in {{language}}."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/methodology.md",
+        "{{knowledgePath}}/review.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "2-build-issue-tree/issue-tree.yaml",
+        "3-identify-subproblems/subproblems.yaml",
+        "4-route-frameworks/framework-selection.yaml",
+        "5-form-hypotheses/hypotheses.yaml",
+        "6-plan-research/research-plan.yaml",
+        "12-build-evidence-base/evidence.jsonl",
+        "12-build-evidence-base/evidence-summary.md",
+        "13-test-hypotheses/hypothesis-results.yaml",
+        "14-synthesize-insights/synthesis.yaml",
+        "15-build-storyline/storyline.md",
+        "17-write-report/report.md"
+      ],
+      "output": [
+        "18-review-report/review.yaml",
+        "18-review-report/review-history.md"
+      ],
+      "transitions": {
+        "PASS": {
+          "target": [
+            "finalize"
+          ]
+        },
+        "REVISE": {
+          "target": [
+            "route-revision"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "FAIL": {
+          "target": [
+            "finalize"
+          ]
+        }
+      }
+    },
+    "route-revision": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "Read `reviseTo` in the review file and return the matching event:",
+        "issue-tree -> TO_ISSUE_TREE, frameworks -> TO_FRAMEWORKS, hypotheses -> TO_HYPOTHESES, research -> TO_RESEARCH, synthesis -> TO_SYNTHESIS, storyline -> TO_STORYLINE, report -> TO_REPORT.",
+        "A missing or unknown value is TO_REPORT.",
+        "Write route.yaml with `reviseTo`, the event and the ids of the findings being sent back.",
+        "Decide nothing else."
+      ],
+      "input": [
+        "18-review-report/review.yaml"
+      ],
+      "output": [
+        "19-route-revision/route.yaml"
+      ],
+      "transitions": {
+        "TO_ISSUE_TREE": {
+          "target": [
+            "build-issue-tree"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "TO_FRAMEWORKS": {
+          "target": [
+            "route-frameworks"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "TO_HYPOTHESES": {
+          "target": [
+            "form-hypotheses"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "TO_RESEARCH": {
+          "target": [
+            "research-market",
+            "research-customer",
+            "research-competition",
+            "research-environment",
+            "research-counterevidence"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "TO_SYNTHESIS": {
+          "target": [
+            "synthesize-insights"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "TO_STORYLINE": {
+          "target": [
+            "build-storyline"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        },
+        "TO_REPORT": {
+          "target": [
+            "write-report"
+          ],
+          "max": 3,
+          "onMax": [
+            "finalize"
+          ]
+        }
+      },
+      "knowledge": [
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ]
+    },
+    "finalize": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are the package clerk. You copy files with commands and change no wording, number or order in the report."
+      ],
+      "prompt": [
+        "Assemble the final package for \"{{question}}\".",
+        "Copy the report and the evidence base with cp, and write README.md in {{language}}.",
+        "The artifacts of every step live under {{outputDir}}; link them from the index by relative path.",
+        "Return DONE when the package is complete."
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/finalize.md",
+        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+      ],
+      "input": [
+        "1-frame-decision/brief.yaml",
+        "4-route-frameworks/framework-selection.yaml",
+        "12-build-evidence-base/evidence.jsonl",
+        "13-test-hypotheses/hypothesis-results.yaml",
+        "17-write-report/report.md",
+        "18-review-report/review.yaml",
+        "18-review-report/review-history.md"
+      ],
+      "output": [
+        "20-finalize/report.md",
+        "20-finalize/evidence.jsonl",
+        "20-finalize/README.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}
