@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "factories/state.schema.json",
   "title": "AIPipelineRunState",
-  "description": "JSON Schema for pipeline runtime state persistence (state.json). It lives at the kit root (factories/ in a project) beside pipeline.schema.json; the recorder (tools/run-state, bundled as bin/state.mjs) writes state.json, its src/features/state/state.schema.ts is the Zod twin, and tests/state-schema-sync.test.ts fails when the two drift. A new state.json points here with $schema \"factories/state.schema.json\" (relative to the project root).",
+  "description": "JSON Schema for pipeline runtime state persistence (state.json). It lives at the kit root (factories/ in a project) beside pipeline.schema.json; the recorder (factories-tools/pipeline-state, bundled as factories-tools/bin/state.mjs) writes state.json, its src/features/state/state.schema.ts is the Zod twin, and tests/state-schema-sync.test.ts fails when the two drift. A new state.json points here with $schema \"factories/state.schema.json\" (relative to the project root).",
   "type": "object",
   "required": [
     "runId",
