@@ -52,11 +52,11 @@ Where things land in the project:
 | Path | What |
 |---|---|
 | `run/<id>/<slug>-<date>/` | one run: the steps' outputs, `state.json`, `pipeline.json` snapshot |
-| `factory-data/<id>/` | what a factory keeps across runs (insight stores, lessons, a project map); runs never write inside `factories/` |
+| `factories-data/<id>/` | what a factory keeps across runs (insight stores, lessons, a project map); runs never write inside `factories/` |
 | `improvements/<id>/` | improvement memos some factories collect |
 | `factories.local/<id>/` | the project's own factories (below) |
 
-`feature-factory` needs a project map at `factory-data/feature-factory/project-map.md`
+`feature-factory` needs a project map at `factories-data/feature-factory/project-map.md`
 (start from `factories/feature-factory/knowledge/project/project-map.template.md`) and takes
 the project's `tenant`, `project`, `awsAccount`, `awsProfile` as params; a project keeps a
 real `.claude/skills/feature-factory/SKILL.md` of its own to pass them (install.sh leaves it

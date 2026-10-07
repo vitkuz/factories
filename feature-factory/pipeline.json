@@ -9,7 +9,7 @@
     "skillPath": ".",
     "homePath": "~",
     "factoryPath": "{{rootPath}}/factories/{{id}}",
-    "dataPath": "{{rootPath}}/factory-data/{{id}}",
+    "dataPath": "{{rootPath}}/factories-data/{{id}}",
     "projectMap": "{{dataPath}}/project-map.md",
     "lessonsFile": "{{dataPath}}/lessons.md",
     "contextPath": "{{rootPath}}/docs/context",

@@ -1,6 +1,6 @@
 # Project map: <project>
 
-Copy this file to `factory-data/feature-factory/project-map.md` in the project root and fill it
+Copy this file to `factories-data/feature-factory/project-map.md` in the project root and fill it
 in; every feature-factory step reads it first. Keep it short: where things are, what to read
 when, the live values, the gates. It is the one place that names this project.
 

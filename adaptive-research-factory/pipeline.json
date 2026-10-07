@@ -11,7 +11,7 @@
     "factoryPath": "{{rootPath}}/factories/{{id}}",
     "knowledgePath": "{{factoryPath}}/knowledge",
     "frameworksPath": "{{factoryPath}}/knowledge/frameworks",
-    "insightStore": "{{rootPath}}/factory-data/{{id}}/insight-store.jsonl"
+    "insightStore": "{{rootPath}}/factories-data/{{id}}/insight-store.jsonl"
   },
   "params": {
     "question": "",

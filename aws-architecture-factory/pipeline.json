@@ -12,7 +12,7 @@
     "knowledgePath": "{{factoryPath}}/knowledge",
     "adaptivePath": "{{factoryPath}}/knowledge/adaptive",
     "frameworksPath": "{{factoryPath}}/knowledge/frameworks",
-    "insightStore": "{{rootPath}}/factory-data/{{id}}/insight-store.jsonl"
+    "insightStore": "{{rootPath}}/factories-data/{{id}}/insight-store.jsonl"
   },
   "params": {
     "idea": "",

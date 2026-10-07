@@ -6,7 +6,7 @@ Stored insights are prior evidence, never unquestioned truth.
 
 ## Location and format
 
-- Path: `factory-data/aws-architecture-factory/insight-store.jsonl`, relative to the project root (never inside the kit).
+- Path: `factories-data/aws-architecture-factory/insight-store.jsonl`, relative to the project root (never inside the kit).
 - Format: JSON Lines. One complete JSON object per line, no blank lines, no trailing commas, no wrapping array.
 - The file may not exist before the first run. Readers treat a missing file as empty. Writers create it on first write.
 
