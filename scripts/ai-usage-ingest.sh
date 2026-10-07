@@ -4,8 +4,9 @@
 # Meant as a pipeline `hooks.after` command (this script ships in the factories kit):
 #   bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}
 #
-# ai-usage is optional: a project without it (no <project>/tools/ai-usage build and no
-# `ai-usage` on PATH) gets one line and exit 0, so the hook never fails a run there.
+# ai-usage is optional: a project without it (no <project>/factories-tools/ai-usage or
+# <project>/tools/ai-usage build and no `ai-usage` on PATH) gets one line and exit 0, so the
+# hook never fails a run there.
 #
 # What it does, in order:
 #   1. registers this repository as a factory root with ai-usage (once; idempotent)
@@ -44,16 +45,23 @@ if [ ! -f "${RUN_DIR}/state.json" ] && [ ! -f "${RUN_DIR}/.state.json" ]; then
   echo "ai-usage-ingest: no state.json in ${RUN_DIR}; ai-usage attributes cost by the run's state file, so there is nothing to attribute" >&2
   exit 1
 fi
-# Prefer this repository's own build: the global `ai-usage` may be a copy from another
-# checkout with older rate cards and attribution.
-LOCAL_BIN="${ROOT}/tools/ai-usage/bin/ai-usage.js"
-if [ -f "${LOCAL_BIN}" ] && [ -f "${ROOT}/tools/ai-usage/dist/cli/index.js" ]; then
+# Prefer the project's own build: the global `ai-usage` may be a copy from another checkout
+# with older rate cards and attribution. The tool ships in the factories-tools submodule
+# (<project>/factories-tools/ai-usage); a project's own copy at <project>/tools/ai-usage still counts.
+LOCAL_BIN=""
+for candidate in "${ROOT}/factories-tools/ai-usage" "${ROOT}/tools/ai-usage"; do
+  if [ -f "${candidate}/bin/ai-usage.js" ] && [ -f "${candidate}/dist/cli/index.js" ]; then
+    LOCAL_BIN="${candidate}/bin/ai-usage.js"
+    break
+  fi
+done
+if [ -n "${LOCAL_BIN}" ]; then
   ai-usage() { node "${LOCAL_BIN}" "$@"; }
   echo "ai-usage-ingest: using ${LOCAL_BIN}"
 elif command -v ai-usage >/dev/null 2>&1; then
-  echo "ai-usage-ingest: using $(command -v ai-usage) (no local build in ${ROOT}/tools/ai-usage)"
+  echo "ai-usage-ingest: using $(command -v ai-usage) (no local build in ${ROOT}/factories-tools/ai-usage or ${ROOT}/tools/ai-usage)"
 else
-  echo "ai-usage-ingest: ai-usage is not available in ${ROOT} (no tools/ai-usage build, none on PATH): skipping cost attribution for ${RUN_NAME}"
+  echo "ai-usage-ingest: ai-usage is not available in ${ROOT} (no factories-tools/ai-usage or tools/ai-usage build, none on PATH): skipping cost attribution for ${RUN_NAME}"
   exit 0
 fi
 

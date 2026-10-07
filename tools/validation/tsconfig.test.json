@@ -1,6 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "rootDir": ".", "noEmit": true },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "esbuild.config.d.mts"],
-  "exclude": ["node_modules", "dist"]
-}
