@@ -3,7 +3,7 @@
   "id": "feature-factory",
   "name": "Feature Factory",
   "author": "vitkuz",
-  "description": "Builds any feature the user asks for in an AWS project laid out as repos/back, repos/front, repos/tools and repos/docs with its spec in docs/context, back first: brief, parallel scouting, questions, an approved plan, spec first, then implement, deploy (dev, automatic, stops on danger) and test the back until it works, recording the API as built; then build the front locally against it, test it in a browser (fixing front or back), deploy the front, smoke-test, update docs, report and keep lessons.",
+  "description": "Builds any feature the user asks for in an AWS project laid out as repos/back, repos/front, repos/tools and repos/docs with its spec in docs/context, back first: brief, parallel scouting, questions, an approved plan, spec first, then implement, deploy (dev, automatic, stops on danger) and test the back until it works, recording the API as built; then build the front locally against it, test it in a browser (fixing front or back), deploy the front, smoke-test, update docs, report, keep lessons, then commit and push the feature's changes repo by repo and the project with the new pointers.",
   "constants": {
     "rootPath": "cwd",
     "skillPath": ".",
@@ -840,6 +840,50 @@
       ],
       "transitions": {
         "DONE": {
+          "target": [
+            "commit"
+          ]
+        }
+      }
+    },
+    "commit": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a release engineer. You commit and push only this feature's changes, and never move anyone else's work."
+      ],
+      "prompt": [
+        "Commit and push the changes of the feature {{feature}}: first each repo under repos/ that is a git submodule and holds changes from this feature, then the project with the new submodule pointers, this feature's docs/context files, its features/ folder, this run's folder and {{dataPath}}.",
+        "Take the list of changed files from the change reports in your input; leave every other change alone.",
+        "Write what you committed and pushed, per repo, in your output file.",
+        "Return DONE, or FAILED with the repo and what blocked it."
+      ],
+      "input": [
+        "1-feature-brief/brief.md",
+        "9-update-context-docs/changes.md",
+        "10-implement-back/changes.md",
+        "12-fix-back/*.md",
+        "15-implement-front/*.md",
+        "17-fix-front/*.md",
+        "21-update-docs/*.md",
+        "22-report/report.md",
+        "23-lessons/lessons.md"
+      ],
+      "output": [
+        "24-commit/commit.md"
+      ],
+      "knowledge": [
+        "{{projectMap}}",
+        "{{factoryPath}}/knowledge/pipeline/commit-and-push.md"
+      ],
+      "workDir": "{{rootPath}}",
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        },
+        "FAILED": {
           "target": [
             "END"
           ]
