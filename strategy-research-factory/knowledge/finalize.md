@@ -5,7 +5,7 @@ in the report is rewritten.
 
 ## What to do
 
-1. **Copy the report** with `cp` into the package folder as `report.md`. Then remove one thing
+1. **Copy the report** with `cp` into the package folder as `strategy-report.md`. Then remove one thing
    only: a `## Review points addressed` section at the top, if present (from that heading to the
    next `#` or `##` heading). Everything else stays byte for byte.
 2. **Copy the evidence base** with `cp` as `evidence.jsonl`.
@@ -22,7 +22,7 @@ in the report is rewritten.
 5. **How the question was broken down.** The top-level issue-tree questions, and for each the
    frameworks used, or "custom analysis". Count the frameworks considered and rejected.
 6. **Hypotheses.** A table of id, status and confidence, counted from the results file.
-7. **Files.** `report.md`, `evidence.jsonl`, and the relative paths of the brief, the issue tree,
+7. **Files.** `strategy-report.md`, `evidence.jsonl`, and the relative paths of the brief, the issue tree,
    the framework selection, the hypotheses, the research plan, the test results, the synthesis,
    the storyline and the review history, one line each.
 8. **Open points.** Every CRITICAL or MAJOR finding left open, and every known gap the report

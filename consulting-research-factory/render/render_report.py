@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a consulting report (Markdown with ```vega-lite blocks) to one standalone HTML page.
 
-Usage: python3 render_report.py <report.md> <report.html>
+Usage: python3 render_report.py <consulting-report.md> <report.html>
 
 No Python dependencies. The page loads marked and vega-embed from jsDelivr when opened,
 turns the Markdown into HTML and draws every vega-lite block as a chart.
@@ -66,7 +66,7 @@ TEMPLATE = """<!doctype html>
 </style>
 </head>
 <body>
-<main id="report"><noscript>This page needs JavaScript to render. The Markdown source is report.md.</noscript></main>
+<main id="report"><noscript>This page needs JavaScript to render. The Markdown source is consulting-report.md.</noscript></main>
 <script id="report-source" type="application/json">__SOURCE__</script>
 <script>
   const source = JSON.parse(document.getElementById('report-source').textContent);

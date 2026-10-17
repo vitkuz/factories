@@ -793,7 +793,7 @@
         "21-update-docs/*.md"
       ],
       "output": [
-        "22-report/report.md"
+        "22-report/feature-report.md"
       ],
       "knowledge": [
         "{{factoryPath}}/knowledge/pipeline/run-report.md"
@@ -819,7 +819,7 @@
         "Return DONE."
       ],
       "input": [
-        "22-report/report.md",
+        "22-report/feature-report.md",
         "11-verify-back/*.md",
         "12-fix-back/*.md",
         "13-deploy-back/*.md",
@@ -866,7 +866,7 @@
         "15-implement-front/*.md",
         "17-fix-front/*.md",
         "21-update-docs/*.md",
-        "22-report/report.md",
+        "22-report/feature-report.md",
         "23-lessons/lessons.md"
       ],
       "output": [

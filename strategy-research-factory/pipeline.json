@@ -679,7 +679,7 @@
         "16-review-storyline/storyline-review.yaml"
       ],
       "output": [
-        "17-write-report/report.md"
+        "17-write-report/strategy-report.md"
       ],
       "transitions": {
         "DONE": {
@@ -723,7 +723,7 @@
         "13-test-hypotheses/hypothesis-results.yaml",
         "14-synthesize-insights/synthesis.yaml",
         "15-build-storyline/storyline.md",
-        "17-write-report/report.md"
+        "17-write-report/strategy-report.md"
       ],
       "output": [
         "18-review-report/review.yaml",
@@ -861,12 +861,12 @@
         "4-route-frameworks/framework-selection.yaml",
         "12-build-evidence-base/evidence.jsonl",
         "13-test-hypotheses/hypothesis-results.yaml",
-        "17-write-report/report.md",
+        "17-write-report/strategy-report.md",
         "18-review-report/review.yaml",
         "18-review-report/review-history.md"
       ],
       "output": [
-        "20-finalize/report.md",
+        "20-finalize/strategy-report.md",
         "20-finalize/evidence.jsonl",
         "20-finalize/README.md"
       ],

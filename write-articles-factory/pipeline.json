@@ -194,7 +194,7 @@
       "prompt": [
         "Write the article for angle 1 of the selection on {{topic}}, for {{audience}}, in {{language}}, about {{words}} words.",
         "Use only angle 1.",
-        "If {{outputDir}}/9-fact-check/report.md exists, this is a revision pass: fix exactly what it lists for article-1 and change nothing else.",
+        "If {{outputDir}}/9-fact-check/fact-check-report.md exists, this is a revision pass: fix exactly what it lists for article-1 and change nothing else.",
         "Return DONE."
       ],
       "input": [
@@ -227,7 +227,7 @@
       "prompt": [
         "Write the article for angle 2 of the selection on {{topic}}, for {{audience}}, in {{language}}, about {{words}} words.",
         "Use only angle 2.",
-        "If {{outputDir}}/9-fact-check/report.md exists, this is a revision pass: fix exactly what it lists for article-2 and change nothing else.",
+        "If {{outputDir}}/9-fact-check/fact-check-report.md exists, this is a revision pass: fix exactly what it lists for article-2 and change nothing else.",
         "Return DONE."
       ],
       "input": [
@@ -260,7 +260,7 @@
       "prompt": [
         "Write the article for angle 3 of the selection on {{topic}}, for {{audience}}, in {{language}}, about {{words}} words.",
         "Use only angle 3.",
-        "If {{outputDir}}/9-fact-check/report.md exists, this is a revision pass: fix exactly what it lists for article-3 and change nothing else.",
+        "If {{outputDir}}/9-fact-check/fact-check-report.md exists, this is a revision pass: fix exactly what it lists for article-3 and change nothing else.",
         "Return DONE."
       ],
       "input": [
@@ -302,7 +302,7 @@
         "2-deep-research/sources.md"
       ],
       "output": [
-        "9-fact-check/report.md"
+        "9-fact-check/fact-check-report.md"
       ],
       "knowledge": [
         "{{factoryPath}}/knowledge/fact-check.md"
@@ -341,7 +341,7 @@
       ],
       "input": [
         "*-write-article-*/article-*.md",
-        "9-fact-check/report.md"
+        "9-fact-check/fact-check-report.md"
       ],
       "output": [
         "10-edit/article-*.edited.md"
@@ -400,7 +400,7 @@
       "input": [
         "11-humanize/article-*.final.md",
         "2-deep-research/sources.md",
-        "9-fact-check/report.md"
+        "9-fact-check/fact-check-report.md"
       ],
       "output": [
         "12-package/package.md",

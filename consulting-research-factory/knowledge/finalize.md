@@ -5,7 +5,7 @@ register and one index. Nothing in the report is rewritten here.
 
 ## What to do
 
-1. **Copy the report** into the package folder as `report.md` with a file command (`cp`), never by
+1. **Copy the report** into the package folder as `consulting-report.md` with a file command (`cp`), never by
    retyping. Then remove one thing only: a `## Review points addressed` section at the top, if
    present (from that heading to the next `#`/`##` heading). Everything else stays byte for byte.
 2. **Render** the copied report to `report.html` with the command given in the task. It needs only
@@ -20,7 +20,7 @@ register and one index. Nothing in the report is rewritten here.
 2. **Verdict** — the first line of the last partner review, quoted. If the report was finalized
    because a review loop reached its cap, say so in one sentence and list the findings left open.
 3. **The answer** — the report's At a glance, quoted verbatim.
-4. **Files** — `report.md` (the report), `report.html` (open in a browser; charts render there),
+4. **Files** — `consulting-report.md` (the report), `report.html` (open in a browser; charts render there),
    `evidence.jsonl` (every sourced fact, one per line), one line each.
 5. **Open points** — every CRITICAL or MAJOR review finding not addressed and every known gap the
    report lists, one line each. "None" is a valid entry.

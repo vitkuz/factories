@@ -461,7 +461,7 @@
         "11-design-exhibits/exhibits.md"
       ],
       "output": [
-        "12-write-report/report.md"
+        "12-write-report/consulting-report.md"
       ],
       "knowledge": [
         "{{knowledgePath}}/method.md",
@@ -503,7 +503,7 @@
         "9-synthesize-insights/synthesis.md",
         "10-build-storyline/storyline.md",
         "11-design-exhibits/exhibits.md",
-        "12-write-report/report.md"
+        "12-write-report/consulting-report.md"
       ],
       "output": [
         "13-partner-review/review.md"
@@ -560,16 +560,16 @@
       ],
       "prompt": [
         "Assemble the final package for the study on {{topic}}.",
-        "Copy the report into the output folder as report.md, render it to report.html with `python3 {{factoryPath}}/render/render_report.py <report.md> <report.html>`, copy the evidence register as evidence.jsonl, and write README.md in {{language}}.",
+        "Copy the report into the output folder as consulting-report.md, render it to report.html with `python3 {{factoryPath}}/render/render_report.py <consulting-report.md> <report.html>`, copy the evidence register as evidence.jsonl, and write README.md in {{language}}.",
         "Return DONE when the package is complete."
       ],
       "input": [
         "8-build-evidence-base/evidence.jsonl",
-        "12-write-report/report.md",
+        "12-write-report/consulting-report.md",
         "13-partner-review/review.md"
       ],
       "output": [
-        "14-finalize/report.md",
+        "14-finalize/consulting-report.md",
         "14-finalize/report.html",
         "14-finalize/evidence.jsonl",
         "14-finalize/README.md"

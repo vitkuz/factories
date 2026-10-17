@@ -35,7 +35,7 @@ factories/strategy-research-factory/knowledge/                   METHODOLOGY + A
 ├── synthesis.md             → synthesis.yaml
 ├── storyline.md             → storyline.md
 ├── storyline-review.md      → storyline-review.yaml
-├── report.md                → report.md
+├── report.md                → strategy-report.md
 ├── review.md                → review.yaml + review-history.md  (adversarial checks + revision routing)
 └── finalize.md              → the package README
 
@@ -52,7 +52,7 @@ run/strategy-research-factory/<slug>-<date>/    ARTIFACTS (one folder per run)
 ├── framework-vocabulary.yaml    problem type → framework ids, generated
 ├── 1-frame-decision/brief.yaml
 ├── …
-└── 20-finalize/{report.md, evidence.jsonl, README.md}
+└── 20-finalize/{strategy-report.md, evidence.jsonl, README.md}
 ```
 
 `state.json` is not written yet. Run `/create-any-factory-add-state-and-validation
@@ -85,14 +85,14 @@ steps:
                            on: { PASS: [write-report],
                                  REVISE: { target: [build-storyline], max: 2, onMax: [write-report] },
                                  REVISE_SYNTHESIS: { target: [synthesize-insights], max: 1, onMax: [write-report] } } }
-  write-report:          { model: opus,   out: report.md,               on: { DONE: [review-report] } }
+  write-report:          { model: opus,   out: strategy-report.md,      on: { DONE: [review-report] } }
   review-report:         { model: opus,   out: review.yaml + review-history.md,
                            on: { PASS: [finalize], FAIL: [finalize], REVISE: { target: [route-revision], max: 3, onMax: [finalize] } } }
   route-revision:        { model: haiku,  out: route.yaml,
                            on: { TO_ISSUE_TREE: [build-issue-tree], TO_FRAMEWORKS: [route-frameworks], TO_HYPOTHESES: [form-hypotheses],
                                  TO_RESEARCH: [5 lenses], TO_SYNTHESIS: [synthesize-insights], TO_STORYLINE: [build-storyline],
                                  TO_REPORT: [write-report] } }      # each also max 3 → finalize, as a backstop
-  finalize:              { model: haiku,  out: report.md + evidence.jsonl + README.md, on: { DONE: [END] } }
+  finalize:              { model: haiku,  out: strategy-report.md + evidence.jsonl + README.md, on: { DONE: [END] } }
 ```
 
 ## 4–5. Framework metadata schema and the example frameworks
@@ -122,7 +122,7 @@ the tree above). The consuming steps read the same file names, so the shape is t
 | hypothesis-results.yaml | tester | synthesis, storyline review, report, review, finalize |
 | synthesis.yaml | synthesis | storyline, storyline review, report, review |
 | storyline.md / storyline-review.yaml | storyline / its review | report, review |
-| report.md | report | review, finalize |
+| strategy-report.md | report | review, finalize |
 | review.yaml / review-history.md | review | route-revision, the stage sent back to, finalize |
 
 ## 7. Transitions and the state machine
