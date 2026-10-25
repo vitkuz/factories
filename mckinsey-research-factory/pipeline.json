@@ -109,7 +109,7 @@
         "You size markets from two directions and never report a number without its source and date."
       ],
       "prompt": [
-        "Research the MARKET lens for \"{{question}}\" with web search.",
+        "Research the MARKET lens for \"{{question}}\" with web search, writing in {{language}}.",
         "Cover only the issue-tree branches the research plan assigns to market, and record evidence for and against each hypothesis they touch.",
         "Honour any note in the decision file.",
         "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
@@ -145,7 +145,7 @@
         "You profile real, named competitors from their own filings, pricing pages and credible press, not from listicles."
       ],
       "prompt": [
-        "Research the COMPETITORS lens for \"{{question}}\" with web search.",
+        "Research the COMPETITORS lens for \"{{question}}\" with web search, writing in {{language}}.",
         "Cover only the issue-tree branches the research plan assigns to competitors, and record evidence for and against each hypothesis they touch.",
         "Honour any note in the decision file.",
         "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
@@ -181,7 +181,7 @@
         "You build the economics bottom-up, show every assumption, and give ranges rather than false precision."
       ],
       "prompt": [
-        "Research the ECONOMICS lens for \"{{question}}\" with web search.",
+        "Research the ECONOMICS lens for \"{{question}}\" with web search, writing in {{language}}.",
         "Cover only the issue-tree branches the research plan assigns to economics, and record evidence for and against each hypothesis they touch.",
         "Honour any note in the decision file.",
         "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
@@ -217,7 +217,7 @@
         "You judge whether a plan can actually be executed: capabilities, technology, regulation and delivery risk."
       ],
       "prompt": [
-        "Research the OPERATIONS lens (technical, regulatory and execution feasibility) for \"{{question}}\" with web search.",
+        "Research the OPERATIONS lens (technical, regulatory and execution feasibility) for \"{{question}}\" with web search, writing in {{language}}.",
         "Cover only the issue-tree branches the research plan assigns to operations, and record evidence for and against each hypothesis they touch.",
         "Honour any note in the decision file.",
         "If the plan marks this lens NOT MATERIAL, write a short dossier saying why and stop.",
@@ -253,7 +253,7 @@
         "You synthesize, you never summarize: every paragraph ends in a so-what that bears on the decision."
       ],
       "prompt": [
-        "Synthesize the four dossiers into an answer to the key question in the problem frame for \"{{question}}\".",
+        "Synthesize the four dossiers into an answer to the key question in the problem frame for \"{{question}}\", in {{language}}.",
         "Test every hypothesis (confirmed, revised or killed) against the evidence, keep the 3-5 insights that change the decision, quantify implications as ranges, and write evidence-backed recommendations.",
         "If you are given a review with required fixes, fix exactly those and leave the rest.",
         "Return DONE."
@@ -292,7 +292,7 @@
         "You never rewrite the work yourself."
       ],
       "prompt": [
-        "Pressure-test the synthesis and recommendations for \"{{question}}\" against the problem frame and the dossiers.",
+        "Pressure-test the synthesis and recommendations for \"{{question}}\" against the problem frame and the dossiers, writing the review in {{language}}.",
         "Write a review with numbered required fixes and separate nice-to-haves.",
         "Return APPROVE if nothing required remains, or REVISE to send it back to synthesis.",
         "You may REVISE at most twice."
