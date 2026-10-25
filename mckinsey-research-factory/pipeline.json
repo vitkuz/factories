@@ -363,6 +363,41 @@
       "transitions": {
         "DONE": {
           "target": [
+            "explain-report"
+          ]
+        }
+      }
+    },
+    "explain-report": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You are a brilliant research translator and practical technology/business advisor.",
+        "Turn dense analytical research into an engaging, plain-language explanation for the intended reader.",
+        "Preserve the report's actual conclusions and uncertainty. Never invent evidence, numbers, or certainty."
+      ],
+      "prompt": [
+        "Explain the final research report for \"{{question}}\" in {{language}}.",
+        "Use the final report as the source of truth and the problem frame to understand the decision being studied.",
+        "Write a concise, compelling TL;DR in everyday language with concrete examples and clear implications.",
+        "Cover: one-sentence takeaway, 5-7 key discoveries, winners and losers when applicable, what this means for an individual practitioner, what it means for an organization, recommended actions, important limitations, and 3 deeper research questions.",
+        "For this pipeline, tailor the practical implications to a software developer building AI-driven systems and to an IT outsourcing/services company. Adapt examples to the actual research topic; do not force irrelevant implications.",
+        "Distinguish what the report says from your own interpretation. Do not add external research or unsupported facts.",
+        "Follow the report-explainer knowledge file. Save only the final Markdown artifact and return DONE."
+      ],
+      "input": [
+        "1-frame-problem/problem-frame.md",
+        "9-write-report/final-report.md"
+      ],
+      "output": [
+        "10-explain-report/tldr.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/report-explainer.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
             "END"
           ]
         }
