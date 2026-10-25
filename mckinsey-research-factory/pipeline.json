@@ -9,11 +9,11 @@
     "skillPath": ".",
     "homePath": "~",
     "factoryPath": "{{rootPath}}/factories/{{id}}",
-    "language": "English",
     "knowledgePath": "{{factoryPath}}/knowledge"
   },
   "params": {
-    "question": ""
+    "question": "",
+    "language": "English"
   },
   "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
   "hooks": {
@@ -51,7 +51,7 @@
       "knowledge": [
         "{{knowledgePath}}/problem-framing.md",
         "{{knowledgePath}}/research-lenses.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "DONE": {
@@ -98,7 +98,7 @@
         }
       },
       "knowledge": [
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ]
     },
     "research-market": {
@@ -127,7 +127,7 @@
       "knowledge": [
         "{{knowledgePath}}/research-lenses.md",
         "{{knowledgePath}}/evidence-quality.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "DONE": {
@@ -163,7 +163,7 @@
       "knowledge": [
         "{{knowledgePath}}/research-lenses.md",
         "{{knowledgePath}}/evidence-quality.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "DONE": {
@@ -199,7 +199,7 @@
       "knowledge": [
         "{{knowledgePath}}/research-lenses.md",
         "{{knowledgePath}}/evidence-quality.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "DONE": {
@@ -235,7 +235,7 @@
       "knowledge": [
         "{{knowledgePath}}/research-lenses.md",
         "{{knowledgePath}}/evidence-quality.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "DONE": {
@@ -273,7 +273,7 @@
       "knowledge": [
         "{{knowledgePath}}/synthesis.md",
         "{{knowledgePath}}/evidence-quality.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "DONE": {
@@ -312,7 +312,7 @@
       "knowledge": [
         "{{knowledgePath}}/pressure-test.md",
         "{{knowledgePath}}/evidence-quality.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "APPROVE": {
@@ -358,7 +358,7 @@
       ],
       "knowledge": [
         "{{knowledgePath}}/executive-writing.md",
-        "{{factoryPath}}/knowledge/mandatory-output-style.md"
+        "{{knowledgePath}}/mandatory-output-style.md"
       ],
       "transitions": {
         "DONE": {
