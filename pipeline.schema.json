@@ -66,6 +66,61 @@
         }
       ]
     },
+    "paramsInfo": {
+      "type": "object",
+      "description": "Optional UI metadata for params, keyed by param name: how Factory Studio's start form shows each one. For Studio only — the runner ignores it, and a pipeline without it runs exactly the same. A key should name a declared param.",
+      "propertyNames": {
+        "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "How the start form shows one param. Every field is optional.",
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Help text shown under the field."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "checkbox",
+              "select"
+            ],
+            "description": "The input to render. Absent: picked from the default, as without paramsInfo."
+          },
+          "options": {
+            "type": "array",
+            "description": "The choices of a \"select\"; ignored for other types.",
+            "items": {
+              "type": [
+                "string",
+                "number"
+              ]
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "clientId": {
+            "type": "text",
+            "description": "Client name as in the KL sheet, e.g. finexity"
+          },
+          "language": {
+            "type": "select",
+            "options": [
+              "Russian",
+              "English"
+            ],
+            "description": "KP language"
+          }
+        }
+      ]
+    },
     "hooks": {
       "type": "object",
       "description": "Shell commands the harness runs around the whole pipeline. Empty by default. Commands are substituted like every other string; {{outputDir}} is the resolved run folder.",
