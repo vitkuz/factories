@@ -1,0 +1,384 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "quote-to-question-v1-factory",
+  "name": "Quote to Question v1",
+  "author": "vitkuz",
+  "description": "Turns one quote into the short living questions it answers (Reverse Q&A): classifies the quote into a semantic core, researches its historical context and the author's underlying question, then in parallel writes the obvious questions and iconic dialogs where the quote is the reply (written, reviewed by a Balabanov/Mamet/Wilder panel chaired by Tarantino, then the improved and the panel's dialogs merged), merges the three question lists, judges every question with its own subagent (is the quote a direct answer, and how good), filters by verdict and score and adds short dialogue versions, saves the result into the results repository under the quote id, harness and pipeline id under a three-digit run number and appends lessons for the next run. Then it syncs the quote's results folder to S3 and records the run on the quote itself: a top-level `processing` object keyed by the factory id, mapping each step folder to its S3 keys, and the semantic core's primary domain and themes added to the quote's `category` and `tags`.",
+  "constants": {
+    "rootPath": "cwd",
+    "skillPath": ".",
+    "homePath": "~",
+    "factoryPath": "{{rootPath}}/factories/{{id}}",
+    "knowledgePath": "{{factoryPath}}/knowledge",
+    "lessonsFile": "{{knowledgePath}}/lessons.md",
+    "resultsPath": "{{rootPath}}/{{resultsDir}}/{{quoteId}}/{{harness}}/{{id}}",
+    "toolsPath": "{{factoryPath}}/tools"
+  },
+  "params": {
+    "quote": "",
+    "quoteId": "",
+    "author": "unknown",
+    "source": "user",
+    "language": "Russian",
+    "resultsDir": "repos/quotes-to-question",
+    "harness": "claude"
+  },
+  "outputDir": "{{rootPath}}/run/{{id}}/{{slug}}-{{date}}",
+  "hooks": {
+    "before": [
+      "cp {{factoryPath}}/pipeline.json {{outputDir}}/pipeline.json",
+      "for t in pick-quote sync-results-s3 record-processing; do test -f {{toolsPath}}/$t/dist/index.js || (cd {{toolsPath}}/$t && npm ci && npm run build) || exit 1; done"
+    ],
+    "after": [
+      "bash {{rootPath}}/factories/scripts/ai-usage-ingest.sh {{outputDir}}"
+    ]
+  },
+  "START": [
+    "extract-core"
+  ],
+  "steps": {
+    "extract-core": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "prompt": [
+        "Quote: \"{{quote}}\"",
+        "Author: \"{{author}}\"",
+        "Quote id: {{quoteId}}",
+        "Classify this quote. Respond in {{language}}."
+      ],
+      "input": [],
+      "output": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/shared/flags.md",
+        "{{knowledgePath}}/steps/semantic-core.md",
+        "{{knowledgePath}}/steps/quote-shapes.md",
+        "{{knowledgePath}}/steps/pick-quote.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "research-historical-context"
+          ]
+        }
+      }
+    },
+    "research-historical-context": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "prompt": [
+        "Research the historical context of the quote in quote.json. Respond in {{language}}; the original quote stays in its own language."
+      ],
+      "input": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json"
+      ],
+      "output": [
+        "2-research-historical-context/history-context.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/steps/historical-context.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "find-obvious-questions",
+            "iconic-dialogs"
+          ]
+        }
+      }
+    },
+    "find-obvious-questions": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "prompt": [
+        "Suggest obvious questions. Respond in {{language}}."
+      ],
+      "input": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json",
+        "2-research-historical-context/history-context.json"
+      ],
+      "output": [
+        "3-find-obvious-questions/obvious-questions.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/shared/reverse-qa-rules.md",
+        "{{knowledgePath}}/shared/russian-interrogative.md",
+        "{{knowledgePath}}/shared/flags.md",
+        "{{knowledgePath}}/steps/obvious-questions.md",
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "merge-questions"
+          ]
+        }
+      }
+    },
+    "iconic-dialogs": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "system": [
+        "You lead the iconic-dialogs step: every sub-step is its own subagent; you launch them, pass paths and check their files."
+      ],
+      "prompt": [
+        "Create iconic dialogs in which the quote is the answer, review them with the panel and merge the improved and the new dialogs into one file. Respond in {{language}}."
+      ],
+      "input": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json",
+        "2-research-historical-context/history-context.json"
+      ],
+      "output": [
+        "4-iconic-dialogs/iconic-dialogs.draft.json",
+        "4-iconic-dialogs/balabanov.review.md",
+        "4-iconic-dialogs/mamet.review.md",
+        "4-iconic-dialogs/wilder.review.md",
+        "4-iconic-dialogs/tarantino.review.md",
+        "4-iconic-dialogs/iconic-dialogs.final.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/iconic-dialogs/workflow.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "merge-questions"
+          ]
+        }
+      }
+    },
+    "merge-questions": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "Merge the input files together."
+      ],
+      "input": [
+        "3-find-obvious-questions/obvious-questions.json",
+        "4-iconic-dialogs/iconic-dialogs.final.json"
+      ],
+      "output": [
+        "5-merge-questions/merged-questions.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/steps/merge.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "judge-questions"
+          ]
+        }
+      }
+    },
+    "judge-questions": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "prompt": [
+        "Judge every question with its own opus subagent: is the quote its direct answer, and how good is it? Respond in {{language}}."
+      ],
+      "input": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json",
+        "2-research-historical-context/history-context.json",
+        "5-merge-questions/merged-questions.json"
+      ],
+      "output": [
+        "6-judge-questions/judged-questions.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/shared/reverse-qa-rules.md",
+        "{{knowledgePath}}/shared/russian-interrogative.md",
+        "{{knowledgePath}}/shared/flags.md",
+        "{{knowledgePath}}/steps/judge-questions.md",
+        "{{knowledgePath}}/steps/judge-lessons.md",
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "filter-and-compress"
+          ]
+        }
+      }
+    },
+    "filter-and-compress": {
+      "agent": "general-purpose",
+      "model": "opus",
+      "prompt": [
+        "Filter the judged questions by verdict and compact the long ones. Respond in {{language}}."
+      ],
+      "input": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json",
+        "6-judge-questions/judged-questions.json"
+      ],
+      "output": [
+        "7-filter-and-compress/filtered-and-compacted.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/shared/reverse-qa-rules.md",
+        "{{knowledgePath}}/shared/russian-interrogative.md",
+        "{{knowledgePath}}/steps/filter-and-compress.md",
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "pack"
+          ]
+        }
+      }
+    },
+    "pack": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "prompt": [
+        "The work directory is {{resultsPath}}. Copy the results of the previous steps into the next run number there and write a map of them."
+      ],
+      "input": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json",
+        "2-research-historical-context/history-context.json",
+        "3-find-obvious-questions/obvious-questions.json",
+        "4-iconic-dialogs/iconic-dialogs.draft.json",
+        "4-iconic-dialogs/balabanov.review.md",
+        "4-iconic-dialogs/mamet.review.md",
+        "4-iconic-dialogs/wilder.review.md",
+        "4-iconic-dialogs/tarantino.review.md",
+        "4-iconic-dialogs/iconic-dialogs.final.json",
+        "5-merge-questions/merged-questions.json",
+        "6-judge-questions/judged-questions.json",
+        "7-filter-and-compress/filtered-and-compacted.json"
+      ],
+      "output": [
+        "8-pack/map.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/steps/result-format.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "lessons"
+          ]
+        }
+      },
+      "workDir": "{{resultsPath}}"
+    },
+    "lessons": {
+      "agent": "general-purpose",
+      "model": "sonnet",
+      "system": [
+        "You are a retrospective facilitator.",
+        "You keep only lessons that would change what the next run does."
+      ],
+      "prompt": [
+        "Observe this run from its files and append to {{lessonsFile}} the lessons the files prove; name no quote, author, run folder or step.",
+        "Write the lines you added, or 'none', in your output file."
+      ],
+      "input": [
+        "1-extract-core/quote.json",
+        "1-extract-core/semantic-core.json",
+        "2-research-historical-context/history-context.json",
+        "3-find-obvious-questions/obvious-questions.json",
+        "4-iconic-dialogs/iconic-dialogs.final.json",
+        "5-merge-questions/merged-questions.json",
+        "6-judge-questions/judged-questions.json",
+        "7-filter-and-compress/filtered-and-compacted.json"
+      ],
+      "output": [
+        "9-lessons/lessons.md"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/steps/lessons.md",
+        "{{lessonsFile}}"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "sync-results"
+          ]
+        }
+      }
+    },
+    "sync-results": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a release operator. You run the given tool and report what it said; you never reimplement it."
+      ],
+      "prompt": [
+        "Sync this quote's results to S3 with the compiled tool: from {{rootPath}} run `node {{toolsPath}}/sync-results-s3/dist/index.js --dir {{resultsPath}}`.",
+        "Write `{ \"exitCode\": <n>, \"result\": <the tool's STDOUT JSON, unchanged> }` to your output file.",
+        "Return DONE when the exit code is 0, FAILED otherwise (exit 2 means the bucket does not exist yet)."
+      ],
+      "input": [
+        "8-pack/map.md"
+      ],
+      "output": [
+        "10-sync-results/sync.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/steps/publish-results.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "record-processing"
+          ]
+        },
+        "FAILED": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    },
+    "record-processing": {
+      "agent": "general-purpose",
+      "model": "haiku",
+      "system": [
+        "You are a release operator. You run the given tool and report what it said; you never reimplement it."
+      ],
+      "prompt": [
+        "Record this run on the quote with the compiled tool: it writes the step map to `processing` and adds the semantic core's primary domain and themes to the quote's `category` and `tags`. The run folder is the destination folder named in 8-pack/map.md (the highest NNN under {{resultsPath}} if the map does not name it).",
+        "From {{rootPath}} run `node {{toolsPath}}/record-processing/dist/index.js --uuid {{quoteId}} --skill {{id}} --run-dir <the run folder>`.",
+        "Write `{ \"exitCode\": <n>, \"result\": <the tool's STDOUT JSON, unchanged> }` to your output file.",
+        "Return DONE when the exit code is 0, API_PENDING when it is 3 (the API does not accept `processing` yet; nothing was written), FAILED otherwise."
+      ],
+      "input": [
+        "8-pack/map.md",
+        "10-sync-results/sync.json"
+      ],
+      "output": [
+        "11-record-processing/processing.json"
+      ],
+      "knowledge": [
+        "{{knowledgePath}}/steps/publish-results.md"
+      ],
+      "transitions": {
+        "DONE": {
+          "target": [
+            "END"
+          ]
+        },
+        "API_PENDING": {
+          "target": [
+            "END"
+          ]
+        },
+        "FAILED": {
+          "target": [
+            "END"
+          ]
+        }
+      }
+    }
+  }
+}
